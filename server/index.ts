@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url";
 import { CoachRequestSchema } from "../shared/coach";
 import { CoachError, generateCoachReport } from "./coach";
 
+// Pick up ANTHROPIC_API_KEY / PORT from a local .env file when there is one.
+try {
+  process.loadEnvFile();
+} catch {
+  // No .env file: rely on the real environment.
+}
+
 const app = express();
 app.use(express.json({ limit: "20mb" }));
 
