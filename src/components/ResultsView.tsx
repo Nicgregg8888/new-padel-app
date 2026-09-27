@@ -9,7 +9,9 @@ import { editShot, swapPlayers } from "../analysis/corrections";
 import type { Goal } from "../analysis/goals";
 import { analysedSeconds } from "../analysis/reliability";
 import { GoalsPanel } from "./GoalsPanel";
+import { RapidReview } from "./RapidReview";
 import { ReliabilityPanel } from "./ReliabilityPanel";
+import { SectionNav, Takeaways } from "./Takeaways";
 import { Highlights } from "./Highlights";
 import { SwapPlayers } from "./SwapPlayers";
 import { MatchPlayer, type Playlist } from "./MatchPlayer";
@@ -35,6 +37,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [review, setReview] = useState<number | null>(null);
   const closeShare = useCallback(() => setSharing(false), []);
   const endPlaylist = useCallback(() => setPlaylist(null), []);
 
@@ -90,7 +93,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
 
   return (
     <PlayersContext.Provider value={players}>
-      <div className="results">
+      <div className={review !== null ? "results reviewing" : "results"}>
         <div className="results-head">
           <div>
             <h1 className="match-title">{match.title}</h1>
@@ -138,6 +141,8 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             corners for accurate numbers.
           </p>
         )}
+        <Takeaways match={match} goals={goals} />
+        <SectionNav hasVideo={!!src} />
         {!match.demo && <ReliabilityPanel result={result} />}
         {!src && !match.demo && (
           <p className="notice">
@@ -148,7 +153,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
 
         <div className="results-grid">
           {src && (
-            <section className="panel span-2">
+            <section id="sec-video" className="panel span-2">
               <MatchPlayer
                 src={src}
                 result={result}
@@ -159,7 +164,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             </section>
           )}
 
-          <section className={src ? "panel" : "panel span-2"}>
+          <section id="sec-court" className={src ? "panel" : "panel span-2"}>
             <h2>Court map</h2>
             <CourtMap players={result.players} shots={result.shots} onSeek={seek} />
           </section>
@@ -171,7 +176,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             </section>
           )}
 
-          <section className="panel span-3">
+          <section id="sec-players" className="panel span-3">
             <h2>Players</h2>
             <PlayerCards
               players={result.players}
@@ -190,7 +195,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             )}
           </section>
 
-          <section className="panel span-2">
+          <section id="sec-pair" className="panel span-2">
             <h2>Pair play</h2>
             <PairPlay teams={result.teams ?? []} />
           </section>
@@ -210,9 +215,10 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             </section>
           )}
 
-          <section className="panel span-3">
+          <section id="sec-points" className="panel span-3">
             <h2>Points</h2>
             <PointsPanel
+              onStartReview={setReview}
               golden={!!match.goldenPoint}
               onGoldenChange={(goldenPoint) => onChange((m) => ({ ...m, goldenPoint }))}
               rallies={result.rallies}
@@ -223,19 +229,19 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             />
           </section>
 
-          <section className="panel">
+          <section id="sec-goals" className="panel">
             <h2>Your goals</h2>
             <GoalsPanel match={match} goals={goals} onGoalsChange={onGoalsChange} />
           </section>
 
-          <section className="panel">
+          <section id="sec-highlights" className="panel">
             <h2>Highlights</h2>
             <Highlights
               onEditShot={(shot, patch) => onChange((m) => ({ ...m, result: editShot(m.result, shot, patch) }))}
               shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
           </section>
 
-          <section className="panel span-2 coach">
+          <section id="sec-coach" className="panel span-2 coach">
             <h2>
               AI coach <span className="badge">Claude</span>
             </h2>
@@ -254,6 +260,26 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
           </section>
         </div>
       </div>
+      {review !== null && (
+        <RapidReview
+          index={review}
+          rallies={result.rallies}
+          shots={result.shots}
+          tags={match.points ?? []}
+          onTags={(points) => onChange((m) => ({ ...m, points }))}
+          onIndex={setReview}
+          onReplay={
+            src
+              ? (r) =>
+                  play({ title: "Rapid review", clips: [{ start: r.start, end: r.end + 1, label: `${r.shots}-shot point` }] })
+              : null
+          }
+          onClose={() => {
+            setReview(null);
+            setPlaylist(null);
+          }}
+        />
+      )}
       {sharing && <ShareCard match={match} downloads={downloads} onClose={closeShare} />}
     </PlayersContext.Provider>
   );

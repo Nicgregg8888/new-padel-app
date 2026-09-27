@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ENDING_LABELS, PATTERN_LABELS, defaultBy, lastHitter, pointStats, teamOf, type WinRate } from "../analysis/points";
+import { ENDING_LABELS, PATTERN_LABELS, applyTag, pointStats, rankRate, teamOf, type WinRate } from "../analysis/points";
 import { scoreMatch } from "../analysis/scoring";
 import { PLAYER_COLORS } from "../analysis/tracker";
 import type { PairPattern, PointEnding, PointTag, Rally, Shot } from "../analysis/types";
@@ -8,6 +8,7 @@ import { usePlayers } from "../lib/players";
 import type { Playlist } from "./MatchPlayer";
 
 interface Props {
+  onStartReview: (fromRally: number) => void;
   golden: boolean;
   onGoldenChange: (golden: boolean) => void;
   rallies: Rally[];
@@ -27,15 +28,15 @@ export function positioningInsight(team: string, rates: Partial<Record<PairPatte
   );
   if (entries.length < 2) return null;
   const rate = (w: WinRate) => w.won / w.played;
-  const best = entries.reduce((a, b) => (rate(b[1]) > rate(a[1]) ? b : a));
-  const worst = entries.reduce((a, b) => (rate(b[1]) < rate(a[1]) ? b : a));
+  const best = entries.reduce((a, b) => (rankRate(b[1]) > rankRate(a[1]) ? b : a));
+  const worst = entries.reduce((a, b) => (rankRate(b[1]) < rankRate(a[1]) ? b : a));
   if (rate(best[1]) - rate(worst[1]) < 0.15) return null;
   return `${team} wins ${pct(rate(best[1]))} of points when ${PATTERN_LABELS[best[0]].toLowerCase()}, but ${pct(
     rate(worst[1]),
   )} when ${PATTERN_LABELS[worst[0]].toLowerCase()}.`;
 }
 
-export function PointsPanel({ rallies, shots, tags, onChange, onPlay, golden, onGoldenChange }: Props) {
+export function PointsPanel({ rallies, shots, tags, onChange, onPlay, golden, onGoldenChange, onStartReview }: Props) {
   const { name, me } = usePlayers();
   const stats = useMemo(() => pointStats(rallies, tags), [rallies, tags]);
   const score = useMemo(() => scoreMatch(rallies, shots, tags, golden), [rallies, shots, tags, golden]);
@@ -44,16 +45,8 @@ export function PointsPanel({ rallies, shots, tags, onChange, onPlay, golden, on
   const myTeam = me === null ? "A" : teamOf(me);
   const teams: ("A" | "B")[] = myTeam === "A" ? ["A", "B"] : ["B", "A"];
 
-  const setTag = (rally: number, patch: Partial<PointTag> | null) => {
-    const rest = tags.filter((t) => t.rally !== rally);
-    if (!patch) return onChange(rest);
-    const prev = byRally.get(rally);
-    const winner = patch.winner ?? prev?.winner ?? "A";
-    const ending = patch.ending ?? prev?.ending ?? "winner";
-    const last = lastHitter(rallies[rally], shots);
-    const by = "by" in patch ? patch.by : prev && !patch.winner && !patch.ending ? prev.by : defaultBy(winner, ending, last);
-    onChange([...rest, { rally, winner, ending, by }].sort((a, b) => a.rally - b.rally));
-  };
+  const setTag = (rally: number, patch: Partial<PointTag> | null) =>
+    onChange(applyTag(tags, rallies, shots, rally, patch));
 
   if (!rallies.length) {
     return <p className="muted">No rallies were detected, so there are no points to review.</p>;
@@ -130,6 +123,21 @@ export function PointsPanel({ rallies, shots, tags, onChange, onPlay, golden, on
           ))}
         </dl>
       )}
+
+      <div className="review-cta">
+        <button
+          className="primary"
+          onClick={() => {
+            const firstUntagged = rallies.findIndex((_, i) => !byRally.has(i));
+            onStartReview(firstUntagged < 0 ? 0 : firstUntagged);
+          }}
+        >
+          {stats.tagged === 0 ? "Start rapid review" : stats.tagged < rallies.length ? "Continue rapid review" : "Review points again"}
+        </button>
+        <span className="muted small">
+          Watch each point, press <kbd>A</kbd>/<kbd>B</kbd> for who won and <kbd>1</kbd>–<kbd>3</kbd> for how.
+        </span>
+      </div>
 
       {stats.tagged === 0 ? (
         <p className="hint">

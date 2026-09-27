@@ -65,3 +65,34 @@ export function pointStats(rallies: Rally[], tags: PointTag[]): PointStats {
   }
   return stats;
 }
+
+/**
+ * Set (or clear, with null) the tag for one rally. Changing who won or how it
+ * ended re-picks the default "by" from the last hitter; an explicit `by` wins.
+ */
+export function applyTag(
+  tags: PointTag[],
+  rallies: Rally[],
+  shots: Shot[],
+  rally: number,
+  patch: Partial<Omit<PointTag, "rally">> | null,
+): PointTag[] {
+  const rest = tags.filter((t) => t.rally !== rally);
+  if (!patch) return rest;
+  const prev = tags.find((t) => t.rally === rally);
+  const winner = patch.winner ?? prev?.winner ?? "A";
+  const ending = patch.ending ?? prev?.ending ?? "winner";
+  const by =
+    "by" in patch
+      ? patch.by
+      : prev && !patch.winner && !patch.ending
+        ? prev.by
+        : defaultBy(winner, ending, lastHitter(rallies[rally], shots));
+  return [...rest, { rally, winner, ending, by }].sort((a, b) => a.rally - b.rally);
+}
+
+/**
+ * Win rate for ranking, pulled toward 50% when there are few points behind it
+ * (Laplace smoothing), so 0 of 2 doesn't outrank 2 of 12 as "the worst".
+ */
+export const rankRate = (w: WinRate) => (w.won + 1) / (w.played + 2);

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { analysedSeconds } from "../analysis/reliability";
 import { fmtTime } from "../lib/format";
+import { FilmingGuide } from "./FilmingGuide";
 import type { MatchRecord } from "../lib/match";
 
 interface Props {
@@ -70,6 +71,7 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
           </div>
         )}
       </div>
+      <div className="upload-col">
       <div
         className={drag ? "dropzone drag" : "dropzone"}
         onDragOver={(e) => {
@@ -102,6 +104,8 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
           hidden
           onChange={(e) => accept(e.target.files?.[0])}
         />
+      </div>
+        <FilmingGuide />
       </div>
     </section>
   );

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCoachSummary } from "../src/analysis/coachRequest";
 import { demoPointTags, demoResult } from "../src/analysis/demo";
-import { defaultBy, lastHitter, pointStats } from "../src/analysis/points";
+import { applyTag, defaultBy, lastHitter, pointStats } from "../src/analysis/points";
 import { pairPattern, rallyPatterns } from "../src/analysis/tactics";
 import type { Rally, SampledFrame, Shot } from "../src/analysis/types";
 import { positioningInsight } from "../src/components/PointsPanel";
@@ -91,5 +91,22 @@ describe("chat request limits", () => {
     expect(ok.success).toBe(true);
     const tooLong = ChatRequestSchema.safeParse({ summary, report: null, messages: [{ role: "user", content: "x".repeat(5000) }] });
     expect(tooLong.success).toBe(false);
+  });
+});
+
+describe("applyTag", () => {
+  const rallies: Rally[] = [{ start: 0, end: 5, shots: 3 }, { start: 10, end: 15, shots: 3 }];
+  const shots: Shot[] = [{ t: 4, playerId: 2, type: "forehand", swingSpeed: 9, court: { x: 5, y: 3 }, zone: "baseline" }];
+
+  it("adds, updates and clears a tag, re-picking 'by' when the outcome changes", () => {
+    let tags = applyTag([], rallies, shots, 0, { winner: "B" });
+    expect(tags).toEqual([{ rally: 0, winner: "B", ending: "winner", by: 2 }]);
+    tags = applyTag(tags, rallies, shots, 0, { ending: "unforced" });
+    expect(tags[0].by).toBeUndefined(); // an unforced error by B's hitter can't give B the point
+    tags = applyTag(tags, rallies, shots, 0, { by: 1 });
+    expect(tags[0].by).toBe(1);
+    tags = applyTag(tags, rallies, shots, 1, { winner: "A" });
+    expect(tags.map((t) => t.rally)).toEqual([0, 1]);
+    expect(applyTag(tags, rallies, shots, 0, null).map((t) => t.rally)).toEqual([1]);
   });
 });

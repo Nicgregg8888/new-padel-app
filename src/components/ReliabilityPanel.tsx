@@ -4,6 +4,7 @@ import { PLAYER_COLORS } from "../analysis/tracker";
 import type { AnalysisResult } from "../analysis/types";
 import { pct } from "../lib/format";
 import { usePlayers } from "../lib/players";
+import { FilmingGuide } from "./FilmingGuide";
 
 const GRADE_TEXT: Record<Grade, string> = {
   good: "Reliable",
@@ -16,7 +17,7 @@ export function ReliabilityPanel({ result }: { result: AnalysisResult }) {
   const { name } = usePlayers();
   const rel = useMemo(() => assessReliability(result), [result]);
   return (
-    <details className={`reliability ${rel.grade}`}>
+    <details id="sec-reliability" className={`reliability ${rel.grade}`}>
       <summary>
         <span className="grade-dot" aria-hidden />
         <b>{GRADE_TEXT[rel.grade]}</b>
@@ -48,6 +49,7 @@ export function ReliabilityPanel({ result }: { result: AnalysisResult }) {
                 <li key={t}>{t}</li>
               ))}
             </ul>
+            <FilmingGuide />
           </>
         ) : (
           <p className="small">No problems spotted with this recording.</p>

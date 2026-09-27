@@ -10,6 +10,9 @@ Upload a padel match recording and get:
 - **Serves** — the first back-court shot of each rally.
 - **Demo match** — explore every screen with simulated data before uploading a video.
 - **Match card** — a shareable image of your stats, pair play and heatmap.
+- **Key takeaways** — the few findings that matter most in a match, at the top of the results, with a section menu to jump around.
+- **Rapid point review** — each point plays; press A/B for who won and 1–3 for how, and it moves to the next point.
+- **Filming guide** — where to put the camera for the best analysis.
 - **Point review** — tag who won each rally and how (winner, forced or unforced error); see win rate by positioning ("together at the net: 67% · split: 17%") and each player's winners and errors.
 - **Real padel scoring** — tagged points replay into sets, games and 15-30-40 (advantage or golden point, tiebreak at 6-6), with break points and service holds from the detected serves.
 - **Goals** — set targets (split under 15%, under 5 unforced errors, …); every match is checked and the coach is told.
