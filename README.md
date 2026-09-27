@@ -27,7 +27,8 @@ Upload a padel match recording and get:
 - **Analyse part of a video** — pick a start and end, e.g. one set of a long match.
 - **Pair tactics** — how often each pair is together at the net, together at the back, or split (one up, one back), plus partner spacing and net takings.
 - **Highlights** — filter shots by player and type ("all my backhand volleys") and play them back to back; longest rallies.
-- **Your players** — name everyone and mark "this is me"; names show on the video, stats and coaching.
+- **Your players** — after each analysis, a photo of every player: tap "That's me" and add names; they show on the video, stats and coaching.
+- **Simple results** — an overview with what stood out and what to do next, then tabs for players, positioning, points, highlights and the AI coach.
 - **AI coach** — Claude reviews the stats plus stills from key shots and writes strengths, things to work on, drills, team tactics and key moments; then answers follow-up questions in a chat.
 - **Match history & progress** — every analysis is saved in the browser, with trends across matches (net time, pair split, shots and meters per minute).
 

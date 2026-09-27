@@ -49,18 +49,23 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
           <span className="accent">read by AI.</span>
         </h1>
         <p>
-          Drop in a match recording. PadelVision tracks all four players, detects every swing,
-          maps court positioning and then asks an AI coach what to work on next.
+          Film a match, drop the video in, and see how you really play: every shot, where you stood, how you
+          played as a pair, and what to work on next.
         </p>
-        <ul className="features">
-          <li><b>Pose tracking</b> for up to 4 players, in your browser</li>
-          <li><b>Shot detection</b> — forehand, backhand, volleys, overheads</li>
-          <li><b>Court heatmaps</b>, distance covered and speed</li>
-          <li><b>Pair tactics</b>: net together, split, spacing</li>
-          <li><b>Highlights</b>: every smash or backhand, played back to back</li>
-          <li><b>AI coach</b>: a report with drills, then ask it anything</li>
-          <li><b>Progress</b> across matches, saved in your browser</li>
-        </ul>
+        <ol className="how-steps">
+          <li>
+            <b>Add your video</b>
+            <span>Any phone recording of a match works.</span>
+          </li>
+          <li>
+            <b>Check the court</b>
+            <span>We find it for you; just confirm.</span>
+          </li>
+          <li>
+            <b>Get your stats and coaching</b>
+            <span>Shots, positioning, highlights and an AI coach.</span>
+          </li>
+        </ol>
         <button className="ghost demo-btn" onClick={onDemo}>
           No video handy? Explore a demo match →
         </button>
@@ -104,11 +109,10 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
         onKeyDown={(e) => e.key === "Enter" && input.current?.click()}
       >
         <div className="drop-icon" aria-hidden>▶</div>
-        <p className="drop-title">{checking ? "Checking the video…" : "Drop a match video here"}</p>
-        <p className="muted">or click to browse · MP4, MOV, WebM</p>
+        <p className="drop-title">{checking ? "Checking the video…" : "Choose a match video"}</p>
+        <p className="muted">or drag it here · MP4, MOV or WebM</p>
         <p className="muted small">
-          Best results: fixed camera behind a baseline, whole court in view. Your video never
-          leaves your device unless you request an AI report (then only a few stills are sent).
+          🔒 Private: your video stays on this device. Only if you ask the AI coach are a few still images sent.
         </p>
         {error && <p className="error">{error}</p>}
         <input

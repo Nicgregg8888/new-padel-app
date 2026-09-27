@@ -123,14 +123,6 @@ export function takeaways(m: Input, limit = 4): Takeaway[] {
         });
       }
     }
-  } else if (result.rallies.length) {
-    out.push({
-      tone: "info",
-      title: "Tag who won each point",
-      detail: "It unlocks the score, win rates by positioning, break points and point-based goals. Rapid review makes it quick.",
-      section: "points",
-      priority: 40,
-    });
   }
 
   if (!m.demo) {
@@ -145,16 +137,6 @@ export function takeaways(m: Input, limit = 4): Takeaway[] {
         priority: rel.grade === "poor" ? 110 : 50,
       });
     }
-  }
-
-  if (m.me === null) {
-    out.push({
-      tone: "info",
-      title: "Tell us which player you are",
-      detail: "Tap “This is me” on your player card to get goals, progress and advice aimed at you.",
-      section: "players",
-      priority: 45,
-    });
   }
 
   return out.sort((a, b) => b.priority - a.priority).slice(0, limit);

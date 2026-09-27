@@ -33,6 +33,7 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
   useEffect(() => {
     const ctrl = new AbortController();
     let video: HTMLVideoElement | null = null;
+    setError(null);
     (async () => {
       try {
         const loaded = await loadHiddenVideo(src, { attach: true });
@@ -95,6 +96,17 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
     };
   }, [src, settings, fingerprint, restart]);
 
+  // Show progress in the browser tab, so it can be checked from another tab.
+  useEffect(() => {
+    const before = document.title;
+    return () => {
+      document.title = before;
+    };
+  }, []);
+  useEffect(() => {
+    document.title = error ? "Analysis stopped · PadelVision" : `${Math.round(progress * 100)}% analysed · PadelVision`;
+  }, [progress, error]);
+
   const elapsed = (performance.now() - started.current) / 1000;
   const done = progress - Math.max(0, progressAtStart.current);
   const eta = done > 0.02 ? (elapsed / done) * (1 - progress) : null;
@@ -103,7 +115,7 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
     <section className="analyzing panel">
       <div className="analyzing-head">
         <div>
-          <h2>Analyzing match</h2>
+          <h2>Analysing your match</h2>
           <p className="muted">{error ? "Analysis failed" : status}</p>
           {resumedAt !== null && !error && (
             <p className="small resumed">
@@ -133,9 +145,19 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
         <span>{players} player{players === 1 ? "" : "s"} in view</span>
         <span>{eta !== null ? `~${fmtTime(eta)} left` : "estimating…"}</span>
       </div>
-      {error && (
-        <p className="error">
-          {error}. The pose model loads from the internet on first use — check your connection and try again.
+      {error ? (
+        <div className="error">
+          <p>
+            {error}. The first analysis downloads the AI model, so check your internet connection and try again.
+          </p>
+          <button className="primary" onClick={() => setRestart((n) => n + 1)}>
+            Try again
+          </button>
+        </div>
+      ) : (
+        <p className="muted small">
+          You can use other tabs while this runs. Progress is saved: if you close the page, open the same video with
+          the same settings to carry on.
         </p>
       )}
       <canvas ref={canvas} className="live-canvas" />

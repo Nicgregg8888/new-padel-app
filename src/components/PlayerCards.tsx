@@ -8,13 +8,14 @@ interface Props {
   calibrated: boolean;
   names: Record<number, string>;
   me: number | null;
+  photos?: Record<number, string>;
   onRename: (id: number, name: string) => void;
   onSetMe: (id: number | null) => void;
 }
 
-export function PlayerCards({ players, calibrated, names, me, onRename, onSetMe }: Props) {
+export function PlayerCards({ players, calibrated, names, me, photos, onRename, onSetMe }: Props) {
   if (!players.length) {
-    return <p className="muted">No players were tracked. Try calibrating the court or using the Full model.</p>;
+    return <p className="muted">No players were found. Try marking the court and choosing “Most accurate”.</p>;
   }
   return (
     <div className="player-cards">
@@ -25,6 +26,7 @@ export function PlayerCards({ players, calibrated, names, me, onRename, onSetMe 
           style={{ borderTopColor: PLAYER_COLORS[p.playerId] }}
         >
           <header>
+            {photos?.[p.playerId] && <img className="avatar" src={photos[p.playerId]} alt="" />}
             <div className="name-field">
               <input
                 id={`player-name-${p.playerId}`}

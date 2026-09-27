@@ -13,7 +13,10 @@ import { canExportVideo } from "../lib/reelExport";
 import { ExportReel } from "./ExportReel";
 import { RapidReview } from "./RapidReview";
 import { ReliabilityPanel } from "./ReliabilityPanel";
-import { SectionNav, Takeaways } from "./Takeaways";
+import { Takeaways } from "./Takeaways";
+import type { Takeaway } from "../analysis/takeaways";
+import { WhoIsWho } from "./WhoIsWho";
+import { playerPhotos } from "../lib/photos";
 import { VsUsual } from "./VsUsual";
 import { Highlights } from "./Highlights";
 import { SwapPlayers } from "./SwapPlayers";
@@ -91,9 +94,58 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
     [match],
   );
 
-  const avgRally = result.rallies.length
-    ? result.rallies.reduce((a, r) => a + r.shots, 0) / result.rallies.length
-    : 0;
+  const [tab, setTab] = useState<Tab>("overview");
+  const menu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const close = (e: PointerEvent) => {
+      if (menu.current?.open && !menu.current.contains(e.target as Node)) menu.current.removeAttribute("open");
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  useEffect(() => setTab("overview"), [match.id]);
+  const go = (section: Takeaway["section"] | Tab) => {
+    const target = SECTION_TAB[section as Takeaway["section"]] ?? (section as Tab);
+    setTab(target);
+    // Open and scroll to a section inside the tab once it has rendered.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`sec-${section}`) ?? document.getElementById("results-tabs");
+      if (el instanceof HTMLDetailsElement) el.open = true;
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  // Photos of each player, cut from the video once and kept with the match.
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const needPhotos = !!src && !match.demo && !match.photos && result.frames.length > 0;
+  useEffect(() => {
+    if (!needPhotos || !src) return;
+    let live = true;
+    setPhotosLoading(true);
+    playerPhotos(src, result.frames, result.players.map((p) => p.playerId)).then((photos) => {
+      if (!live) return;
+      setPhotosLoading(false);
+      onChange((m) => ({ ...m, photos }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [needPhotos, src, match.id]);
+  const askWho = !match.demo && !match.whoConfirmed && result.players.length > 0 && (!!src || match.me === null);
+
+  const longest = Math.max(0, ...result.rallies.map((r) => r.shots));
+  const tagged = (match.points ?? []).length;
+  const nextSteps: { tab: Tab; title: string; detail: string }[] = [];
+  if (result.rallies.length && tagged < result.rallies.length)
+    nextSteps.push({
+      tab: "points",
+      title: "Who won each point?",
+      detail: tagged ? `${result.rallies.length - tagged} points left to mark` : "Mark them to see your score and what wins you points",
+    });
+  if (match.me === null && !askWho)
+    nextSteps.push({ tab: "players", title: "Which one is you?", detail: "Advice, goals and progress aimed at you" });
+  if (!match.report) nextSteps.push({ tab: "coach", title: "Get coaching", detail: "An AI coach reviews your match and suggests drills" });
+  if (src && result.shots.length) nextSteps.push({ tab: "highlights", title: "Watch your shots", detail: "Every forehand, volley or smash, back to back" });
 
   return (
     <PlayersContext.Provider value={players}>
@@ -109,162 +161,196 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
           </div>
           <div className="kpi-actions">
             <button className="primary" onClick={() => setSharing(true)}>
-              Match card
+              Share
             </button>
-            {onReanalyze && (
-              <button className="ghost" onClick={onReanalyze}>
-                Re-analyze
-              </button>
-            )}
-            {(!HOSTED || downloads) && (
-              <button className="ghost" onClick={exportJson}>
-                Export JSON
-              </button>
+            {(onReanalyze || !HOSTED || downloads) && (
+              <details className="menu" ref={menu} onClick={(e) => {
+                if ((e.target as HTMLElement).closest(".menu-list button")) menu.current?.removeAttribute("open");
+              }}>
+                <summary className="ghost" aria-label="More actions">
+                  More
+                </summary>
+                <div className="menu-list">
+                  {onReanalyze && <button onClick={onReanalyze}>Analyse again with other settings</button>}
+                  {(!HOSTED || downloads) && <button onClick={exportJson}>Download the data (JSON)</button>}
+                </div>
+              </details>
             )}
           </div>
         </div>
-        <section className="kpis">
-          <Kpi
-            label={result.range ? `Analysed (${fmtTime(result.range.start)}–${fmtTime(result.range.end)})` : "Duration"}
-            value={fmtTime(analysedSeconds(result))}
-          />
-          <Kpi label="Players tracked" value={String(result.players.length)} />
-          <Kpi label="Shots detected" value={String(result.shots.length)} />
-          <Kpi label="Rallies" value={String(result.rallies.length)} />
-          <Kpi label="Avg. rally" value={avgRally ? `${avgRally.toFixed(1)} shots` : "—"} />
-          {result.ball && (
-            <>
-              <Kpi label="Shots seen by ball tracking" value={String(result.shots.filter((s) => s.confirmed).length)} />
-              <Kpi label="Lobs" value={String(result.shots.filter((s) => s.lob).length)} />
-            </>
-          )}
-        </section>
-        {!result.calibrated && (
-          <p className="notice">
-            Court not calibrated: distances, speeds and positions are approximate. Re-analyze and mark the court
-            corners for accurate numbers.
-          </p>
-        )}
-        <Takeaways match={match} goals={goals} />
-        <VsUsual match={match} />
-        <SectionNav hasVideo={!!src} />
-        {!match.demo && <ReliabilityPanel result={result} />}
-        {!src && !match.demo && (
-          <p className="notice">
-            Viewing a saved match. The video isn't stored, so playback and highlights clips are off; stats, the
-            court map and the coach all still work.
-          </p>
-        )}
 
-        <div className="results-grid">
-          {src && (
-            <section id="sec-video" className="panel span-2">
-              <MatchPlayer
-                src={src}
-                result={result}
-                videoRef={videoRef}
-                playlist={playlist}
-                onPlaylistEnd={endPlaylist}
-              />
-            </section>
-          )}
-
-          <section id="sec-court" className={src ? "panel" : "panel span-2"}>
-            <h2>Court map</h2>
-            <CourtMap players={result.players} shots={result.shots} onSeek={seek} />
+        {src && (
+          <section id="sec-video" className="panel video-panel">
+            <MatchPlayer src={src} result={result} videoRef={videoRef} playlist={playlist} onPlaylistEnd={endPlaylist} />
           </section>
+        )}
 
-          {!src && (
-            <section className="panel">
-              <h2>Shot mix</h2>
-              <ShotChart players={result.players} />
-            </section>
-          )}
+        <nav id="results-tabs" className="tabs" role="tablist" aria-label="Results">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              className={tab === id ? "tab on" : "tab"}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-          <section id="sec-players" className="panel span-3">
-            <h2>Players</h2>
-            <PlayerCards
-              players={result.players}
-              calibrated={result.calibrated}
-              names={match.names}
-              me={match.me}
-              onRename={(id, name) => onChange((m) => ({ ...m, names: { ...m.names, [id]: name } }))}
-              onSetMe={(id) => onChange((m) => ({ ...m, me: id }))}
-            />
-            {src && result.frames.length > 0 && result.players.length > 1 && (
-              <SwapPlayers
-                players={result.players.map((p) => p.playerId)}
-                currentTime={() => videoRef.current?.currentTime ?? 0}
-                onSwap={(a, b, from) => onChange((m) => ({ ...m, result: swapPlayers(m.result, a, b, from) }))}
+        {tab === "overview" && (
+          <div className="tab-body" role="tabpanel">
+            {askWho && (
+              <WhoIsWho
+                ids={result.players.map((p) => p.playerId)}
+                photos={match.photos ?? {}}
+                loading={photosLoading}
+                names={match.names}
+                me={match.me}
+                onDone={(names, me) => onChange((m) => ({ ...m, names, me, whoConfirmed: true }))}
               />
             )}
-          </section>
-
-          <section id="sec-pair" className="panel span-2">
-            <h2>Pair play</h2>
-            <PairPlay teams={result.teams ?? []} />
-          </section>
-
-
-          {src ? (
-            <section className="panel">
-              <h2>Shot mix</h2>
-              <ShotChart players={result.players} />
+            <section className="kpis">
+              <Kpi
+                label={result.range ? `Analysed (${fmtTime(result.range.start)}–${fmtTime(result.range.end)})` : "Match length"}
+                value={fmtTime(analysedSeconds(result))}
+              />
+              <Kpi label="Shots" value={String(result.shots.length)} />
+              <Kpi label="Points played" value={String(result.rallies.length)} />
+              <Kpi label="Longest point" value={longest ? `${longest} shots` : "—"} />
+              {result.ball && <Kpi label="Lobs" value={String(result.shots.filter((s) => s.lob).length)} />}
             </section>
-          ) : (
-            <section className="panel">
-              <h2>Rallies</h2>
-              <p className="muted">
-                {result.rallies.length} rallies, longest {Math.max(0, ...result.rallies.map((r) => r.shots))} shots.
+            {!result.calibrated && (
+              <p className="notice">
+                The court wasn't marked, so distances and positions are rough. Use More → Analyse again and mark the
+                court for accurate numbers.
               </p>
+            )}
+            {!src && !match.demo && (
+              <p className="notice">
+                This is a saved match. The video isn't stored, so clips won't play; everything else still works.
+              </p>
+            )}
+            <Takeaways match={match} goals={goals} onGo={go} />
+            {nextSteps.length > 0 && (
+              <section className="next-steps" aria-label="What to do next">
+                {nextSteps.map((n) => (
+                  <button key={n.tab} className="next-step" onClick={() => go(n.tab)}>
+                    <b>{n.title}</b>
+                    <span>{n.detail}</span>
+                    <span aria-hidden className="next-arrow">→</span>
+                  </button>
+                ))}
+              </section>
+            )}
+            <VsUsual match={match} />
+            <div className="two-col">
+              <section id="sec-goals" className="panel">
+                <h2>Your goals</h2>
+                <GoalsPanel match={match} goals={goals} onGoalsChange={onGoalsChange} />
+              </section>
+              <section className="panel">
+                <h2>Shot mix</h2>
+                <ShotChart players={result.players} />
+              </section>
+            </div>
+            {!match.demo && <ReliabilityPanel result={result} />}
+          </div>
+        )}
+
+        {tab === "players" && (
+          <div className="tab-body" role="tabpanel">
+            <section id="sec-players" className="panel">
+              <h2>Players</h2>
+              <PlayerCards
+                players={result.players}
+                calibrated={result.calibrated}
+                names={match.names}
+                me={match.me}
+                photos={match.photos}
+                onRename={(id, name) => onChange((m) => ({ ...m, names: { ...m.names, [id]: name } }))}
+                onSetMe={(id) => onChange((m) => ({ ...m, me: id }))}
+              />
+              {src && result.frames.length > 0 && result.players.length > 1 && (
+                <SwapPlayers
+                  players={result.players.map((p) => p.playerId)}
+                  currentTime={() => videoRef.current?.currentTime ?? 0}
+                  onSwap={(a, b, from) => onChange((m) => ({ ...m, result: swapPlayers(m.result, a, b, from) }))}
+                />
+              )}
             </section>
-          )}
+          </div>
+        )}
 
-          <section id="sec-points" className="panel span-3">
-            <h2>Points</h2>
-            <PointsPanel
-              onStartReview={setReview}
-              golden={!!match.goldenPoint}
-              onGoldenChange={(goldenPoint) => onChange((m) => ({ ...m, goldenPoint }))}
-              rallies={result.rallies}
-              shots={result.shots}
-              tags={match.points ?? []}
-              onChange={(points) => onChange((m) => ({ ...m, points }))}
-              onPlay={src ? play : null}
-            />
-          </section>
+        {tab === "tactics" && (
+          <div className="tab-body two-col" role="tabpanel">
+            <section id="sec-court" className="panel">
+              <h2>Where everyone played</h2>
+              <CourtMap players={result.players} shots={result.shots} onSeek={seek} />
+            </section>
+            <section id="sec-pair" className="panel">
+              <h2>Playing as a pair</h2>
+              <PairPlay teams={result.teams ?? []} />
+            </section>
+          </div>
+        )}
 
-          <section id="sec-goals" className="panel">
-            <h2>Your goals</h2>
-            <GoalsPanel match={match} goals={goals} onGoalsChange={onGoalsChange} />
-          </section>
+        {tab === "points" && (
+          <div className="tab-body" role="tabpanel">
+            <section id="sec-points" className="panel">
+              <h2>Points</h2>
+              <PointsPanel
+                onStartReview={setReview}
+                golden={!!match.goldenPoint}
+                onGoldenChange={(goldenPoint) => onChange((m) => ({ ...m, goldenPoint }))}
+                rallies={result.rallies}
+                shots={result.shots}
+                tags={match.points ?? []}
+                onChange={(points) => onChange((m) => ({ ...m, points }))}
+                onPlay={src ? play : null}
+              />
+            </section>
+          </div>
+        )}
 
-          <section id="sec-highlights" className="panel">
-            <h2>Highlights</h2>
-            <Highlights
-              onExport={src && canExportVideo() ? setExporting : null}
-              onEditShot={(shot, patch) => onChange((m) => ({ ...m, result: editShot(m.result, shot, patch) }))}
-              shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
-          </section>
+        {tab === "highlights" && (
+          <div className="tab-body" role="tabpanel">
+            <section id="sec-highlights" className="panel">
+              <h2>Highlights</h2>
+              <Highlights
+                onExport={src && canExportVideo() ? setExporting : null}
+                onEditShot={(shot, patch) => onChange((m) => ({ ...m, result: editShot(m.result, shot, patch) }))}
+                shots={result.shots}
+                rallies={result.rallies}
+                players={result.players}
+                onPlay={src ? play : null}
+              />
+            </section>
+          </div>
+        )}
 
-          <section id="sec-coach" className="panel span-2 coach">
-            <h2>
-              AI coach <span className="badge">Claude</span>
-            </h2>
-            <CoachPanel
-              result={result}
-              src={src}
-              names={match.names}
-              me={match.me}
-              points={match.points ?? []}
-              goldenPoint={!!match.goldenPoint}
-              goals={goals}
-              report={match.report ?? null}
-              onReport={(report) => onChange((m) => ({ ...m, report: report ?? undefined }))}
-              onSeek={seek}
-            />
-          </section>
-        </div>
+        {tab === "coach" && (
+          <div className="tab-body" role="tabpanel">
+            <section id="sec-coach" className="panel coach">
+              <h2>
+                AI coach <span className="badge">Claude</span>
+              </h2>
+              <CoachPanel
+                result={result}
+                src={src}
+                names={match.names}
+                me={match.me}
+                points={match.points ?? []}
+                goldenPoint={!!match.goldenPoint}
+                goals={goals}
+                report={match.report ?? null}
+                onReport={(report) => onChange((m) => ({ ...m, report: report ?? undefined }))}
+                onSeek={seek}
+              />
+            </section>
+          </div>
+        )}
       </div>
       {review !== null && (
         <RapidReview
@@ -293,6 +379,24 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
     </PlayersContext.Provider>
   );
 }
+
+type Tab = "overview" | "players" | "tactics" | "points" | "highlights" | "coach";
+const TABS: [Tab, string][] = [
+  ["overview", "Overview"],
+  ["players", "Players"],
+  ["tactics", "Positioning"],
+  ["points", "Points"],
+  ["highlights", "Highlights"],
+  ["coach", "AI coach"],
+];
+const SECTION_TAB: Record<Takeaway["section"], Tab> = {
+  points: "points",
+  pair: "tactics",
+  goals: "overview",
+  players: "players",
+  reliability: "overview",
+  highlights: "highlights",
+};
 
 function Kpi({ label, value }: { label: string; value: string }) {
   return (

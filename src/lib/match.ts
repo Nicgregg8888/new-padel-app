@@ -18,6 +18,10 @@ export interface MatchRecord {
   points?: PointTag[];
   /** Games are decided by a golden point at 40-40 (no advantage). */
   goldenPoint?: boolean;
+  /** The user has confirmed who's who (or skipped the question). */
+  whoConfirmed?: boolean;
+  /** Small JPEG data URLs of each player, taken from the video. */
+  photos?: Record<number, string>;
   /** Simulated sample data, never saved. */
   demo?: boolean;
 }

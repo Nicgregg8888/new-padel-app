@@ -16,9 +16,9 @@ describe("takeaways", () => {
     expect(t.some((x) => x.section === "pair" && x.title.includes("split"))).toBe(true);
   });
 
-  it("nudges to tag points and pick yourself when that's missing", () => {
+  it("keeps to findings: to-dos like tagging points live in the next steps", () => {
     const t = takeaways({ result, me: null, name, goals: DEFAULT_GOALS, demo: true });
-    expect(t.map((x) => x.title)).toEqual(expect.arrayContaining(["Tag who won each point", "Tell us which player you are"]));
+    expect(t.every((x) => x.tone !== "info" || x.section === "reliability")).toBe(true);
   });
 
   it("warns about poor tracking on real matches", () => {

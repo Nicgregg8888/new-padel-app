@@ -26,6 +26,18 @@ const CORNER_NAMES = ["far-left", "far-right", "near-right", "near-left"];
 const SENSITIVITY_TO_SPEED = { low: 12, medium: 9, high: 6.5 } as const;
 type Sensitivity = keyof typeof SENSITIVITY_TO_SPEED;
 
+type Preset = "quick" | "standard" | "best";
+const PRESETS: Record<Preset, { label: string; hint: string; model: PoseModel; fps: number }> = {
+  quick: { label: "Quick", hint: "A fast first look", model: "lite", fps: 5 },
+  standard: { label: "Standard", hint: "Recommended for most videos", model: "full", fps: 10 },
+  best: {
+    label: "Most accurate",
+    hint: "Catches more shots, takes longer",
+    model: HOSTED ? "full" : "heavy",
+    fps: 15,
+  },
+};
+
 interface Props {
   src: string;
   onStart: (s: AnalysisSettings) => void;
@@ -37,8 +49,8 @@ export function SetupView({ src, onStart, onBack }: Props) {
   const [points, setPoints] = useState<Point[]>([]);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [model, setModel] = useState<PoseModel>("full");
-  const [fps, setFps] = useState(10);
+  const [preset, setPreset] = useState<Preset>("standard");
+  const { model, fps } = PRESETS[preset];
   const [sensitivity, setSensitivity] = useState<Sensitivity>("medium");
   const [trackBall, setTrackBall] = useState(true);
   const [useAudio, setUseAudio] = useState(true);
@@ -104,11 +116,11 @@ export function SetupView({ src, onStart, onBack }: Props) {
   return (
     <section className="setup">
       <div className="panel">
-        <h2>Mark the court</h2>
+        <h2>{detect === "found" && points.length === 4 ? "Is this the court?" : "Mark the court"}</h2>
         {detect === "found" && points.length === 4 ? (
           <p className="muted">
-            <b className="ok-text">Court found automatically.</b> Check the yellow lines sit on the court lines;
-            drag any numbered corner to adjust.
+            <b className="ok-text">We found it.</b> If the yellow lines sit on the court lines, you're ready. If
+            not, drag a numbered corner into place.
           </p>
         ) : (
           <p className="muted">
@@ -236,10 +248,10 @@ export function SetupView({ src, onStart, onBack }: Props) {
         </div>
         <div className="row">
           <button className="ghost" onClick={autoDetect}>
-            Find court on this frame
+            Find the court again
           </button>
           <button className="ghost" onClick={() => setPoints(points.slice(0, -1))} disabled={!points.length}>
-            Undo point
+            Undo last corner
           </button>
           <button
             className="ghost"
@@ -255,51 +267,48 @@ export function SetupView({ src, onStart, onBack }: Props) {
       </div>
 
       <aside className="panel settings">
-        <h2>Analysis settings</h2>
-        <label>
-          Pose model
-          <select value={model} onChange={(e) => setModel(e.target.value as PoseModel)}>
-            <option value="lite">Lite — fastest</option>
-            <option value="full">Full — balanced</option>
-            {!HOSTED && <option value="heavy">Heavy — most accurate</option>}
-          </select>
-        </label>
-        <label>
-          Frames analysed per second
-          <select value={fps} onChange={(e) => setFps(Number(e.target.value))}>
-            <option value={5}>5 — quick scan</option>
-            <option value={10}>10 — recommended</option>
-            <option value={15}>15 — best shot detection</option>
-          </select>
-        </label>
-        <label>
-          Swing detection sensitivity
-          <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value as Sensitivity)}>
-            <option value="low">Low — only clear swings</option>
-            <option value="medium">Medium</option>
-            <option value="high">High — catch soft touches</option>
-          </select>
-        </label>
-        <label className="toggle">
-          <input id="use-audio" type="checkbox" checked={useAudio} onChange={(e) => setUseAudio(e.target.checked)} />
-          Use the sound to find shots
-        </label>
-        <p className="muted small">The pop of the ball on the racket pinpoints each shot. Turn off if the video has music over it.</p>
-        <label className="toggle">
-          <input id="track-ball" type="checkbox" checked={trackBall} onChange={(e) => setTrackBall(e.target.checked)} />
-          Track the ball (beta)
-        </label>
-        <p className="muted small">Ball tracking reads every frame, so analysis takes about as long as the video.</p>
+        <h2>How thorough?</h2>
+        <div className="choice-list" role="radiogroup" aria-label="Speed or accuracy">
+          {(Object.keys(PRESETS) as Preset[]).map((k) => (
+            <label key={k} className={preset === k ? "choice on" : "choice"}>
+              <input type="radio" name="preset" checked={preset === k} onChange={() => setPreset(k)} />
+              <span>
+                <b>{PRESETS[k].label}</b>
+                <span className="muted small">{PRESETS[k].hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
         <p className="muted small">
-          Estimated time: ~{Math.max(1, Math.round(trackBall ? Math.max(estMinutes, span / 60) : estMinutes))} min for{" "}
-          {fmtTime(span)} of video
-          (depends on your device).
+          About <b>{Math.max(1, Math.round(trackBall ? Math.max(estMinutes, span / 60) : estMinutes))} min</b> for{" "}
+          {fmtTime(span)} of video. Skipping the court makes distances and positions rough.
         </p>
-        <button className="primary" disabled={points.length !== 4} onClick={() => start(true)}>
-          Analyze match
+        <details className="more-options">
+          <summary>More options</summary>
+          <label className="toggle">
+            <input id="use-audio" type="checkbox" checked={useAudio} onChange={(e) => setUseAudio(e.target.checked)} />
+            Listen for the ball
+          </label>
+          <p className="muted small">The pop of the ball on the racket pinpoints each shot. Turn off if there's music over the video.</p>
+          <label className="toggle">
+            <input id="track-ball" type="checkbox" checked={trackBall} onChange={(e) => setTrackBall(e.target.checked)} />
+            Follow the ball (beta)
+          </label>
+          <p className="muted small">Finds lobs and confirms shots, but analysis takes about as long as the video.</p>
+          <label>
+            Count a swing as a shot when it's
+            <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value as Sensitivity)}>
+              <option value="low">Clear and fast only</option>
+              <option value="medium">Normal</option>
+              <option value="high">Even soft touches</option>
+            </select>
+          </label>
+        </details>
+        <button className="primary big" disabled={points.length !== 4} onClick={() => start(true)}>
+          {points.length === 4 ? "Analyse match" : `Mark ${4 - points.length} more corner${points.length === 3 ? "" : "s"} to start`}
         </button>
         <button className="ghost" onClick={() => start(false)}>
-          Skip calibration (approximate)
+          Skip this step
         </button>
         <button className="link" onClick={onBack}>
           ← Choose another video
