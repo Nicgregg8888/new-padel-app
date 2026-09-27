@@ -21,11 +21,21 @@ interface Slot {
 export class PlayerTracker {
   private slots: Slot[] = [];
 
+  /** Start from known positions (resuming a saved analysis): slot ids are kept. */
+  seed(t: number, players: { id: number; pos: Point }[]) {
+    for (const { id, pos } of players) {
+      if (id < 0 || id >= MAX_PLAYERS) continue;
+      while (this.slots.length <= id) this.slots.push({ pos: { x: -99, y: -99 }, lastT: -Infinity });
+      this.slots[id] = { pos, lastT: t };
+    }
+  }
+
   /** Returns the slot index for each detection, or -1 if it was rejected. */
   assign(t: number, detections: Point[]): number[] {
     const result = new Array<number>(detections.length).fill(-1);
     const pairs: { s: number; d: number; dist: number }[] = [];
     this.slots.forEach((slot, s) => {
+      if (!Number.isFinite(slot.lastT)) return; // placeholder from seed(): only re-acquired below
       const gate = MAX_PLAYER_SPEED * Math.max(t - slot.lastT, 0) + MATCH_SLACK_M;
       detections.forEach((det, d) => {
         const dist = Math.hypot(det.x - slot.pos.x, det.y - slot.pos.y);
@@ -54,7 +64,7 @@ export class PlayerTracker {
       let bestDist = Infinity;
       this.slots.forEach((slot, s) => {
         if (usedSlots.has(s) || t - slot.lastT < STALE_AFTER_S) return;
-        if (slot.pos.y > NET_Y !== det.y > NET_Y) return;
+        if (Number.isFinite(slot.lastT) && slot.pos.y > NET_Y !== det.y > NET_Y) return;
         const dist = Math.hypot(det.x - slot.pos.x, det.y - slot.pos.y);
         if (dist < bestDist) {
           bestDist = dist;

@@ -7,6 +7,8 @@ import type { ShotPatch } from "../analysis/corrections";
 import type { Playlist } from "./MatchPlayer";
 
 interface Props {
+  /** Export a playlist as a video; null when unavailable (no video, or the browser can't record). */
+  onExport: ((p: Playlist) => void) | null;
   onEditShot: (shot: Shot, patch: ShotPatch | null) => void;
   shots: Shot[];
   rallies: Rally[];
@@ -19,7 +21,7 @@ type Sort = "time" | "power";
 const SHOT_TYPES = Object.keys(SHOT_LABELS) as ShotType[];
 const LIST_LIMIT = 40;
 
-export function Highlights({ shots, rallies, players, onPlay, onEditShot }: Props) {
+export function Highlights({ shots, rallies, players, onPlay, onEditShot, onExport }: Props) {
   const { name, me } = usePlayers();
   const [who, setWho] = useState<number | "all">(me ?? "all");
   const [types, setTypes] = useState<Set<ShotType>>(new Set());
@@ -51,15 +53,17 @@ export function Highlights({ shots, rallies, players, onPlay, onEditShot }: Prop
     ...(lobsOnly ? ["lobs"] : []),
   ].join(" · ");
 
-  const playShots = (list: Shot[], title: string) =>
-    onPlay?.({
-      title,
-      clips: list.map((s) => ({
+  const toPlaylist = (list: Shot[], title: string): Playlist => ({
+    title,
+    clips: [...list]
+      .sort((a, b) => a.t - b.t)
+      .map((s) => ({
         start: Math.max(0, s.t - 1.5),
         end: s.t + 1.2,
-        label: `${fmtTime(s.t)} ${name(s.playerId)} ${SHOT_LABELS[s.type].toLowerCase()}`,
+        label: `${fmtTime(s.t)} ${name(s.playerId)} ${SHOT_LABELS[s.type].toLowerCase()}${s.lob ? " (lob)" : ""}`,
       })),
-    });
+  });
+  const playShots = (list: Shot[], title: string) => onPlay?.(toPlaylist(list, title));
 
   return (
     <div className="highlights">
@@ -105,11 +109,18 @@ export function Highlights({ shots, rallies, players, onPlay, onEditShot }: Prop
             <option value="power">Hardest swings first</option>
           </select>
         </label>
-        {onPlay && (
-          <button className="primary small" disabled={!filtered.length} onClick={() => playShots(filtered, filterLabel)}>
-            ▶ Play all {filtered.length}
-          </button>
-        )}
+        <span className="row-gap">
+          {onExport && (
+            <button className="ghost small" disabled={!filtered.length} onClick={() => onExport(toPlaylist(filtered, filterLabel))}>
+              ⬇ Export video
+            </button>
+          )}
+          {onPlay && (
+            <button className="primary small" disabled={!filtered.length} onClick={() => playShots(filtered, filterLabel)}>
+              ▶ Play all {filtered.length}
+            </button>
+          )}
+        </span>
       </div>
 
       {filtered.length ? (

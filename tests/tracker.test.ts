@@ -106,3 +106,21 @@ describe("canonicalPlayerOrder with a ghost track", () => {
     expect(m.has(14)).toBe(false);
   });
 });
+
+describe("PlayerTracker.seed", () => {
+  it("resumes with the same ids and fills a missing player later", () => {
+    const tr = new PlayerTracker();
+    tr.seed(10, [
+      { id: 0, pos: { x: 2, y: 17 } },
+      { id: 2, pos: { x: 2, y: 3 } },
+      { id: 3, pos: { x: 8, y: 3 } },
+    ]);
+    const ids = tr.assign(10.1, [
+      { x: 8.1, y: 3 },
+      { x: 2, y: 17.2 },
+      { x: 7, y: 16 }, // player 1 was missing from the saved frame
+      { x: 2.1, y: 3.1 },
+    ]);
+    expect(ids).toEqual([3, 0, 1, 2]);
+  });
+});

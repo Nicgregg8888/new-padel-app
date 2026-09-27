@@ -9,9 +9,12 @@ import { editShot, swapPlayers } from "../analysis/corrections";
 import type { Goal } from "../analysis/goals";
 import { analysedSeconds } from "../analysis/reliability";
 import { GoalsPanel } from "./GoalsPanel";
+import { canExportVideo } from "../lib/reelExport";
+import { ExportReel } from "./ExportReel";
 import { RapidReview } from "./RapidReview";
 import { ReliabilityPanel } from "./ReliabilityPanel";
 import { SectionNav, Takeaways } from "./Takeaways";
+import { VsUsual } from "./VsUsual";
 import { Highlights } from "./Highlights";
 import { SwapPlayers } from "./SwapPlayers";
 import { MatchPlayer, type Playlist } from "./MatchPlayer";
@@ -38,6 +41,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [sharing, setSharing] = useState(false);
   const [review, setReview] = useState<number | null>(null);
+  const [exporting, setExporting] = useState<Playlist | null>(null);
   const closeShare = useCallback(() => setSharing(false), []);
   const endPlaylist = useCallback(() => setPlaylist(null), []);
 
@@ -142,6 +146,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
           </p>
         )}
         <Takeaways match={match} goals={goals} />
+        <VsUsual match={match} />
         <SectionNav hasVideo={!!src} />
         {!match.demo && <ReliabilityPanel result={result} />}
         {!src && !match.demo && (
@@ -237,6 +242,7 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
           <section id="sec-highlights" className="panel">
             <h2>Highlights</h2>
             <Highlights
+              onExport={src && canExportVideo() ? setExporting : null}
               onEditShot={(shot, patch) => onChange((m) => ({ ...m, result: editShot(m.result, shot, patch) }))}
               shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
           </section>
@@ -279,6 +285,9 @@ export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsC
             setPlaylist(null);
           }}
         />
+      )}
+      {exporting && src && (
+        <ExportReel src={src} playlist={exporting} result={result} downloads={downloads} onClose={() => setExporting(null)} />
       )}
       {sharing && <ShareCard match={match} downloads={downloads} onClose={closeShare} />}
     </PlayersContext.Provider>

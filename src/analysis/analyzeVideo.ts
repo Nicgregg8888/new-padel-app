@@ -6,8 +6,8 @@ import { computePlayerStats, frameAt } from "./stats";
 import { computeTeamTactics, rallyPatterns } from "./tactics";
 import { computeTiles, poseQuality, tileToFrame } from "./tiles";
 import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
-import { knownDuration } from "../lib/video";
-import type { AnalysisResult, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
+import { knownDuration, seekTo } from "../lib/video";
+import type { AnalysisResult, BallObs, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
 
 export interface AnalyzeOptions {
   corners: CourtCorners;
@@ -17,25 +17,18 @@ export interface AnalyzeOptions {
   minSwingSpeed: number;
   /** Analyse only this part of the video (seconds). */
   range?: { start: number; end: number };
+  /** Continue a saved partial analysis of the same video and settings. */
+  resume?: { frames: SampledFrame[]; ball: BallObs[]; lastT: number };
+  /** Called every ~15 s of video (or 20 s of work) with the frames sampled since the last call. */
+  onCheckpoint?: (newFrames: SampledFrame[], lastT: number, ball: BallObs[]) => void;
   /** Also look for the ball on every presented frame (beta). */
   trackBall?: boolean;
   onProgress?: (fraction: number, frame: SampledFrame) => void;
   signal?: AbortSignal;
 }
 
-export function seek(video: HTMLVideoElement, t: number): Promise<void> {
-  return new Promise((resolve) => {
-    if (Math.abs(video.currentTime - t) < 1e-3 && video.readyState >= 2) return resolve();
-    const done = () => {
-      clearTimeout(timer);
-      video.removeEventListener("seeked", done);
-      resolve();
-    };
-    const timer = setTimeout(done, 3000);
-    video.addEventListener("seeked", done);
-    video.currentTime = t;
-  });
-}
+/** Seek and wait for the frame (kept here for existing callers). */
+export const seek = seekTo;
 
 function feet(pose: Pose) {
   const l = pose[LM.leftAnkle];
@@ -184,7 +177,17 @@ export async function analyzeVideo(
   const end = Math.max(start + 0.5, Math.min(opts.range?.end ?? duration, duration));
   const step = 1 / opts.sampleFps;
   const tracker = new PlayerTracker();
-  const frames: SampledFrame[] = [];
+  const frames: SampledFrame[] = opts.resume ? [...opts.resume.frames] : [];
+  const priorBall = opts.resume?.ball ?? [];
+  if (opts.resume && frames.length) {
+    const last = frames[frames.length - 1];
+    tracker.seed(last.t, last.poses.map((p) => ({ id: p.playerId, pos: p.court })));
+  }
+  let checkpointed = frames.length;
+  let lastCheckpointAt = performance.now();
+  // Save every ~15 s of video, or every 20 s of work on slow devices.
+  const CHECKPOINT_FRAMES = 150;
+  const CHECKPOINT_MS = 20_000;
   let lastTs = -1;
 
   const processFrame = (t: number) => {
@@ -223,21 +226,31 @@ export async function analyzeVideo(
     kept.forEach((k, j) => (k.playerId = ids[j]));
     const frame = { t, poses: kept.filter((k) => k.playerId >= 0) };
     frames.push(frame);
+    const fresh = frames.length - checkpointed;
+    if (
+      opts.onCheckpoint &&
+      (fresh >= CHECKPOINT_FRAMES || (fresh >= 10 && performance.now() - lastCheckpointAt > CHECKPOINT_MS))
+    ) {
+      lastCheckpointAt = performance.now();
+      opts.onCheckpoint(frames.slice(checkpointed), t, cleanTrack([...priorBall, ...ballTracker.result()]));
+      checkpointed = frames.length;
+    }
     opts.onProgress?.(Math.min(1, Math.max(0, (t + step - start) / (end - start))), frame);
   };
 
   try {
     // The first inference is slow (model and GPU warm-up): do it on a paused
     // frame so playback doesn't run ahead of us.
-    await seek(video, start);
-    findBall(start);
-    processFrame(start);
+    const from = opts.resume ? Math.min(end - step, opts.resume.lastT + step) : start;
+    await seek(video, from);
+    findBall(from);
+    processFrame(from);
     let fast = hasFrameCallback();
     if (fast) {
       try {
         // Faster than real time when only poses are needed; real time when
         // following the ball, which needs every frame.
-        await samplePlayback(video, opts.trackBall ? 1 : 2, opts.sampleFps, start + step, end, processFrame, findBall, opts.signal);
+        await samplePlayback(video, opts.trackBall ? 1 : 2, opts.sampleFps, from + step, end, processFrame, findBall, opts.signal);
       } catch (e) {
         if (!(e instanceof StallError)) throw e;
         fast = false;
@@ -271,7 +284,7 @@ export async function analyzeVideo(
 
   let ball: AnalysisResult["ball"];
   if (opts.trackBall) {
-    const track = cleanTrack(ballTracker.result());
+    const track = cleanTrack([...priorBall, ...ballTracker.result()].sort((a, b) => a.t - b.t));
     const wristsAt = (t: number) =>
       (frameAt(frames, t)?.poses ?? []).flatMap((p) =>
         [LM.leftWrist, LM.rightWrist]

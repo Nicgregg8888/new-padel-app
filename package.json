@@ -19,6 +19,7 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@mediapipe/tasks-vision": "^1.0.1",
     "express": "^5.2.1",
+    "fix-webm-duration": "^1.0.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"

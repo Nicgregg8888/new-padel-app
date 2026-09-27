@@ -57,3 +57,18 @@ export async function knownDuration(video: HTMLVideoElement): Promise<number> {
   const seekable = video.seekable.length ? video.seekable.end(video.seekable.length - 1) : 0;
   return Number.isFinite(seekable) && seekable > 0 ? seekable : 0;
 }
+
+/** Seek and wait until the frame is ready (with a timeout for stubborn files). */
+export function seekTo(video: HTMLVideoElement, t: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (Math.abs(video.currentTime - t) < 1e-3 && video.readyState >= 2) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      video.removeEventListener("seeked", done);
+      resolve();
+    };
+    const timer = setTimeout(done, 3000);
+    video.addEventListener("seeked", done);
+    video.currentTime = t;
+  });
+}

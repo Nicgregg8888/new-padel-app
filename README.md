@@ -10,6 +10,9 @@ Upload a padel match recording and get:
 - **Serves** — the first back-court shot of each rally.
 - **Demo match** — explore every screen with simulated data before uploading a video.
 - **Match card** — a shareable image of your stats, pair play and heatmap.
+- **Highlight videos** — export any highlight selection as a WebM with skeletons, names, shot labels and the ball trail drawn on.
+- **Resume long analyses** — progress is saved as it goes; reopening the same video with the same settings picks up where it stopped.
+- **Compared to your usual** — this match's key numbers against the average of your last five.
 - **Key takeaways** — the few findings that matter most in a match, at the top of the results, with a section menu to jump around.
 - **Rapid point review** — each point plays; press A/B for who won and 1–3 for how, and it moves to the next point.
 - **Filming guide** — where to put the camera for the best analysis.

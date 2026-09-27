@@ -98,6 +98,7 @@ label.toggle { flex-direction: row; align-items: center; gap: 8px; }
 .progress { height: 10px; background: var(--panel-2); border-radius: 999px; overflow: hidden; margin-top: 16px; }
 .progress-bar { height: 100%; background: linear-gradient(90deg, #9bbf12, var(--accent)); transition: width .2s; }
 .progress-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.85rem; margin: 8px 0 16px; font-variant-numeric: tabular-nums; }
+.resumed { margin: 6px 0 0; color: var(--good); }
 .live-canvas { width: 100%; border-radius: 10px; background: #000; display: block; }
 
 /* results */
@@ -276,6 +277,8 @@ button.small, .ghost.small, .primary.small { padding: 6px 12px; font-size: 0.85r
 .section-nav .chip { flex: none; }
 [id^="sec-"] { scroll-margin-top: 64px; }
 
+.row-gap { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+
 /* filming guide */
 .upload-col { display: grid; gap: 14px; min-width: 0; }
 .filming-guide { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
@@ -305,6 +308,18 @@ kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.
 .rr-group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rr-status { margin: 0 auto; max-width: 1400px; width: 100%; }
 .results.reviewing { padding-bottom: 200px; }
+
+/* vs usual */
+.vs-usual { margin-bottom: 14px; }
+.vs-usual h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
+.vs-usual ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.vs-usual li { display: grid; gap: 2px; padding: 12px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.vs-label { color: var(--muted); font-size: 0.8rem; }
+.vs-value { font-size: 1.4rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.vs-delta { font-size: 0.85rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vs-delta.up { color: var(--good); }
+.vs-delta.down { color: var(--danger); }
+.vs-delta.same { color: var(--muted); font-weight: 500; }
 
 /* scoreboard */
 .scoreboard-wrap { display: grid; gap: 8px; }

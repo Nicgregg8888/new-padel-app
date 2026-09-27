@@ -3,23 +3,29 @@ import { analyzeVideo } from "../analysis/analyzeVideo";
 import type { AnalysisResult } from "../analysis/types";
 import { drawPoses } from "../lib/draw";
 import { fmtTime } from "../lib/format";
+import { checkpointKey, clearCheckpoint, loadCheckpoint, saveCheckpoint, type VideoFingerprint } from "../lib/checkpoint";
 import { loadHiddenVideo } from "../lib/video";
 import type { AnalysisSettings } from "./SetupView";
 
 interface Props {
   src: string;
+  /** Identifies the file, so a reload can resume a saved partial analysis. */
+  fingerprint: VideoFingerprint | null;
   settings: AnalysisSettings;
   onDone: (r: AnalysisResult) => void;
   onCancel: () => void;
 }
 
-export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
+export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("Loading pose model…");
   const [error, setError] = useState<string | null>(null);
   const [players, setPlayers] = useState(0);
   const started = useRef(performance.now());
+  const [resumedAt, setResumedAt] = useState<number | null>(null);
+  const [restart, setRestart] = useState(0);
+  const progressAtStart = useRef(0);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
 
@@ -39,11 +45,28 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
         c.width = Math.min(960, video.videoWidth);
         c.height = Math.round((c.width * video.videoHeight) / video.videoWidth);
         const ctx = c.getContext("2d")!;
+
+        const key = fingerprint ? checkpointKey(fingerprint, settings) : null;
+        const saved = key ? await loadCheckpoint(key) : null;
+        if (ctrl.signal.aborted) return;
+        setResumedAt(saved ? saved.lastT : null);
+        let chunk = saved?.chunks ?? 0;
+        let saving = Promise.resolve();
+
         started.current = performance.now();
+        progressAtStart.current = -1;
         const result = await analyzeVideo(video, {
           ...settings,
+          resume: saved ?? undefined,
+          onCheckpoint: key
+            ? (newFrames, lastT, ball) => {
+                const index = chunk++;
+                saving = saving.then(() => saveCheckpoint(key, index, newFrames, lastT, ball));
+              }
+            : undefined,
           signal: ctrl.signal,
           onProgress: (f, frame) => {
+            if (progressAtStart.current < 0) progressAtStart.current = f;
             setProgress(f);
             setStatus(`Tracking players · ${fmtTime(frame.t)}`);
             setPlayers((n) => Math.max(n, frame.poses.length));
@@ -52,6 +75,7 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
           },
         });
         video.remove();
+        if (key) await saving.then(() => clearCheckpoint(key));
         if (!ctrl.signal.aborted) onDoneRef.current(result);
       } catch (e) {
         if (ctrl.signal.aborted) return;
@@ -64,10 +88,11 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
       video?.pause();
       video?.remove();
     };
-  }, [src, settings]);
+  }, [src, settings, fingerprint, restart]);
 
   const elapsed = (performance.now() - started.current) / 1000;
-  const eta = progress > 0.02 ? (elapsed / progress) * (1 - progress) : null;
+  const done = progress - Math.max(0, progressAtStart.current);
+  const eta = done > 0.02 ? (elapsed / done) * (1 - progress) : null;
 
   return (
     <section className="analyzing panel">
@@ -75,6 +100,21 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
         <div>
           <h2>Analyzing match</h2>
           <p className="muted">{error ? "Analysis failed" : status}</p>
+          {resumedAt !== null && !error && (
+            <p className="small resumed">
+              Picked up at {fmtTime(resumedAt)} from your saved progress.{" "}
+              <button
+                className="link small"
+                onClick={async () => {
+                  if (fingerprint) await clearCheckpoint(checkpointKey(fingerprint, settings));
+                  setProgress(0);
+                  setRestart((n) => n + 1);
+                }}
+              >
+                Start over
+              </button>
+            </p>
+          )}
         </div>
         <button className="ghost" onClick={onCancel}>
           Cancel

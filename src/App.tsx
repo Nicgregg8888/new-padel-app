@@ -8,6 +8,7 @@ import { Uploader } from "./components/Uploader";
 import type { Goal } from "./analysis/goals";
 import { listMatches, loadGoals, loadPlayerPrefs, saveGoals, saveMatch, savePlayerPrefs } from "./lib/history";
 import { demoResult } from "./analysis/demo";
+import type { VideoFingerprint } from "./lib/checkpoint";
 import { demoMatch, newMatch, type MatchRecord } from "./lib/match";
 
 type Stage =
@@ -25,7 +26,7 @@ const STEPS = [
 ] as const;
 
 export default function App() {
-  const [video, setVideo] = useState<{ url: string; name: string } | null>(null);
+  const [video, setVideo] = useState<{ url: string; name: string; fingerprint: VideoFingerprint } | null>(null);
   const [stage, setStageState] = useState<Stage>({ kind: "upload" });
   // Always the latest stage, for updates that land after async work.
   const stageRef = useRef<Stage>(stage);
@@ -121,7 +122,11 @@ export default function App() {
             onShowHistory={() => setStage({ kind: "history" })}
             onDemo={() => setStage({ kind: "results", match: demoMatch(demoResult()), withVideo: false })}
             onFile={(file) => {
-              setVideo({ url: URL.createObjectURL(file), name: file.name });
+              setVideo({
+                url: URL.createObjectURL(file),
+                name: file.name,
+                fingerprint: { name: file.name, size: file.size, lastModified: file.lastModified },
+              });
               setStage({ kind: "setup" });
             }}
           />
@@ -136,6 +141,7 @@ export default function App() {
         {stage.kind === "analyzing" && video && (
           <AnalyzingView
             src={video.url}
+            fingerprint={video.fingerprint}
             settings={stage.settings}
             onCancel={() => setStage({ kind: "setup" })}
             onDone={onAnalysed}
