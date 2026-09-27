@@ -28,3 +28,32 @@ export function loadHiddenVideo(src: string, opts: { attach?: boolean } = {}): P
     v.src = src;
   });
 }
+
+/**
+ * Some recordings (MediaRecorder / screen-recorder WebM) report an infinite
+ * duration until the browser has seen the end of the file. Seeking far past
+ * the end forces it to work the real length out.
+ */
+export async function knownDuration(video: HTMLVideoElement): Promise<number> {
+  if (Number.isFinite(video.duration)) return video.duration;
+  const back = video.currentTime;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      video.removeEventListener("durationchange", check);
+      video.removeEventListener("seeked", check);
+      resolve();
+    };
+    const check = () => {
+      if (Number.isFinite(video.duration)) done();
+    };
+    const timer = setTimeout(done, 8000);
+    video.addEventListener("durationchange", check);
+    video.addEventListener("seeked", check);
+    video.currentTime = 1e7;
+  });
+  video.currentTime = back;
+  if (Number.isFinite(video.duration)) return video.duration;
+  const seekable = video.seekable.length ? video.seekable.end(video.seekable.length - 1) : 0;
+  return Number.isFinite(seekable) && seekable > 0 ? seekable : 0;
+}

@@ -83,3 +83,26 @@ describe("canonicalPlayerOrder", () => {
     expect(playerIdentity(3).label).toMatch(/^B2/);
   });
 });
+
+describe("canonicalPlayerOrder with a ghost track", () => {
+  it("keeps the two best-supported near-side tracks as the near team", () => {
+    const frames: SampledFrame[] = [];
+    for (let t = 0; t < 50; t++) {
+      const poses = [
+        { playerId: 10, landmarks: [], court: { x: 3, y: 16 } }, // near left, real
+        { playerId: 11, landmarks: [], court: { x: 7, y: 16 } }, // near right, real
+        { playerId: 12, landmarks: [], court: { x: 3, y: 4 } },
+        { playerId: 13, landmarks: [], court: { x: 7, y: 4 } },
+      ];
+      // A reflection by the left wall, seen for only 3 frames.
+      if (t < 3) poses.push({ playerId: 14, landmarks: [], court: { x: 0.2, y: 15 } });
+      frames.push({ t, poses });
+    }
+    const m = canonicalPlayerOrder(frames);
+    expect(m.get(10)).toBe(0);
+    expect(m.get(11)).toBe(1);
+    expect(m.get(12)).toBe(2);
+    expect(m.get(13)).toBe(3);
+    expect(m.has(14)).toBe(false);
+  });
+});

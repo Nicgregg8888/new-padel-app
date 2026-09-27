@@ -1,3 +1,4 @@
+import { DEFAULT_GOALS, GOAL_SPECS, type Goal } from "../analysis/goals";
 import type { MatchRecord } from "./match";
 
 /**
@@ -8,21 +9,38 @@ import type { MatchRecord } from "./match";
 const DB = "padelvision";
 const STORE = "matches";
 
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+/** One shared connection for the page's lifetime. */
 function open(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error);
+    };
   });
+  return dbPromise;
 }
 
+/** Resolves when the transaction has committed, not merely when the request succeeded. */
 async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
   const db = await open();
   return new Promise((resolve, reject) => {
-    const req = fn(db.transaction(STORE, mode).objectStore(STORE));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    const t = db.transaction(STORE, mode);
+    const req = fn(t.objectStore(STORE));
+    t.oncomplete = () => resolve(req.result);
+    t.onerror = () => reject(t.error ?? req.error);
+    t.onabort = () => reject(t.error ?? new Error("Transaction aborted"));
   });
 }
 
@@ -70,6 +88,24 @@ export function loadPlayerPrefs(): Pick<MatchRecord, "names" | "me"> | undefined
 export function savePlayerPrefs(p: Pick<MatchRecord, "names" | "me">) {
   try {
     localStorage.setItem(PREFS, JSON.stringify(p));
+  } catch {
+    // Ignore: storage unavailable.
+  }
+}
+
+const GOALS = "padelvision:goals";
+export function loadGoals(): Goal[] {
+  try {
+    const raw = localStorage.getItem(GOALS);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed.filter((g) => g && g.metric in GOAL_SPECS && typeof g.target === "number") : DEFAULT_GOALS;
+  } catch {
+    return DEFAULT_GOALS;
+  }
+}
+export function saveGoals(goals: Goal[]) {
+  try {
+    localStorage.setItem(GOALS, JSON.stringify(goals));
   } catch {
     // Ignore: storage unavailable.
   }

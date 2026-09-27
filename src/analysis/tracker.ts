@@ -107,9 +107,14 @@ export function canonicalPlayerOrder(frames: SampledFrame[]): Map<number, number
       sums.set(p.playerId, s);
     }
   }
-  const means = [...sums.entries()].map(([id, s]) => ({ id, x: s.x / s.n, y: s.y / s.n }));
-  const near = means.filter((m) => m.y > NET_Y).sort((a, b) => a.x - b.x);
-  const far = means.filter((m) => m.y <= NET_Y).sort((a, b) => a.x - b.x);
+  const means = [...sums.entries()].map(([id, s]) => ({ id, x: s.x / s.n, y: s.y / s.n, n: s.n }));
+  // Real players are tracked for most of the match; ghosts (spectators,
+  // reflections) only briefly. Keep the two best-supported tracks per side.
+  const bySupport = (a: { n: number }, b: { n: number }) => b.n - a.n;
+  const nearAll = means.filter((m) => m.y > NET_Y).sort(bySupport);
+  const farAll = means.filter((m) => m.y <= NET_Y).sort(bySupport);
+  const near = nearAll.slice(0, 2).sort((a, b) => a.x - b.x);
+  const far = farAll.slice(0, 2).sort((a, b) => a.x - b.x);
 
   const mapping = new Map<number, number>();
   const place = (group: typeof means, base: number) => {
@@ -119,11 +124,12 @@ export function canonicalPlayerOrder(frames: SampledFrame[]): Map<number, number
       group.forEach((m, i) => mapping.set(m.id, base + Math.min(i, 1)));
     }
   };
-  place(near.slice(0, 2), 0);
-  place(far.slice(0, 2), 2);
-  // Any overflow (e.g. three tracks on one side) keeps a free id if one exists.
+  place(near, 0);
+  place(far, 2);
+  // A side with only one real player leaves a free id; the best-supported
+  // leftover track (e.g. a player who crossed the net line) can take it.
   const free = [0, 1, 2, 3].filter((id) => ![...mapping.values()].includes(id));
-  for (const m of [...near.slice(2), ...far.slice(2)]) {
+  for (const m of [...nearAll.slice(2), ...farAll.slice(2)].sort(bySupport)) {
     const id = free.shift();
     if (id !== undefined) mapping.set(m.id, id);
   }

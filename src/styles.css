@@ -260,6 +260,53 @@ button.small, .ghost.small, .primary.small { padding: 6px 12px; font-size: 0.85r
 .rr-head, .rr-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .rr-controls select { padding: 5px 8px; font-size: 0.85rem; }
 
+/* scoreboard */
+.scoreboard-wrap { display: grid; gap: 8px; }
+.scoreboard { border-collapse: separate; border-spacing: 0; background: #05080c; border-radius: 10px; overflow: hidden; font-variant-numeric: tabular-nums; width: fit-content; max-width: 100%; }
+.scoreboard th, .scoreboard td { padding: 8px 14px; text-align: center; border-bottom: 1px solid #1a2230; }
+.scoreboard tbody tr:last-child th, .scoreboard tbody tr:last-child td { border-bottom: 0; }
+.scoreboard thead th { font-size: 0.72rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.scoreboard tbody th { text-align: left; font-weight: 600; white-space: nowrap; }
+.scoreboard td { font-size: 1.4rem; font-weight: 800; color: var(--muted); }
+.scoreboard td.won { color: var(--text); }
+.scoreboard td.current { color: var(--text); background: #0d141f; }
+.scoreboard td.game-pts { color: #05080c; background: var(--accent); min-width: 3.2em; }
+.scoreboard sup { font-size: 0.6em; margin-left: 2px; }
+.serving { color: var(--accent); margin-right: 8px; font-size: 0.7rem; vertical-align: 2px; }
+.serving.off { visibility: hidden; }
+.score-meta { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.serve-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 24px; margin: 0; font-size: 0.9rem; }
+.serve-stats dt { color: var(--muted); font-size: 0.8rem; }
+.serve-stats dd { margin: 0; }
+
+/* goals */
+.goals { display: grid; gap: 12px; justify-items: start; }
+.goal-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; width: 100%; }
+.goal-list li { display: grid; grid-template-columns: 26px 1fr; gap: 2px 10px; align-items: baseline; }
+.goal-mark { grid-row: span 2; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 0.8rem; background: var(--panel-2); color: var(--muted); }
+.goal-list li.met .goal-mark { background: var(--good); color: #0a0e14; }
+.goal-list li.missed .goal-mark { background: var(--danger); color: #0a0e14; }
+.goal-name { font-weight: 600; font-size: 0.92rem; }
+.goal-value { color: var(--muted); font-size: 0.85rem; }
+.goal-edit-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; width: 100%; }
+.goal-edit-list li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 0.9rem; }
+.goal-edit-list input { width: 5em; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; color: var(--text); }
+.goals .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.table-scroll { overflow-x: auto; }
+.goal-table, .people-table { border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+.goal-table th, .goal-table td, .people-table th, .people-table td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+.goal-table tbody th, .people-table tbody th { text-align: left; font-weight: 600; }
+.goal-table thead th, .people-table thead th { color: var(--muted); font-weight: 500; font-size: 0.78rem; }
+.goal-table thead th:first-child, .people-table thead th:first-child { text-align: left; }
+.goal-table td.met { color: var(--good); font-weight: 800; }
+.goal-table td.missed { color: var(--danger); font-weight: 800; }
+.goal-table td.na { color: var(--muted); }
+.goal-total { font-weight: 700; }
+.people-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.people-grid h3 { font-size: 0.95rem; }
+.people-grid p { margin: 2px 0 8px; }
+.people-table { width: 100%; }
+
 /* corrections */
 .shot-row-item { display: grid; grid-template-columns: 1fr auto; align-items: center; }
 .edit-btn { background: none; border: 0; color: var(--muted); padding: 4px 8px; border-radius: 6px; }

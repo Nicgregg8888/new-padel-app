@@ -9,6 +9,7 @@ import {
 } from "../../shared/coachPrompt";
 import { blobToDataUrl, captureFrames } from "../analysis/analyzeVideo";
 import { buildCoachSummary, planKeyframes, type KeyframePlan } from "../analysis/coachRequest";
+import type { Goal } from "../analysis/goals";
 import type { AnalysisResult, PointTag } from "../analysis/types";
 import { HOSTED, claudeRuntime, isSampleError } from "./hosted";
 import { loadHiddenVideo } from "./video";
@@ -87,6 +88,8 @@ export interface ReportInput {
   names: Record<number, string>;
   me: number | null;
   points?: PointTag[];
+  goldenPoint?: boolean;
+  goals?: Goal[];
   level: string;
   focus: string;
   onStep?: (step: string) => void;
@@ -103,7 +106,7 @@ export async function generateReport(input: ReportInput): Promise<CoachReport> {
   }
   input.onStep?.("Your AI coach is reviewing the match…");
   const req = {
-    summary: buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points }),
+    summary: buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points, goldenPoint: input.goldenPoint, goals: input.goals }),
     context: { level: input.level, focus: input.focus || undefined },
   };
   return HOSTED ? reportInPage(req, plan, images) : reportFromServer(req, plan, images);
@@ -114,6 +117,8 @@ export interface FollowUpInput {
   names: Record<number, string>;
   me: number | null;
   points?: PointTag[];
+  goldenPoint?: boolean;
+  goals?: Goal[];
   report: CoachReport | null;
   turns: ChatTurn[];
   onText?: (text: string) => void;
@@ -121,10 +126,15 @@ export interface FollowUpInput {
 }
 
 /** Answer a follow-up question; `turns` ends with the new user question. */
+/** A conversation sent to Claude must start with the user's turn. */
+function trimTurns(turns: ChatTurn[]): ChatTurn[] {
+  const first = turns.findIndex((t) => t.role === "user");
+  return first < 0 ? [] : turns.slice(first);
+}
+
 export async function askFollowUp(input: FollowUpInput): Promise<string> {
-  const summary = buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points });
-  // Keep the conversation inside the prompt budget: drop the oldest turns first.
-  const turns = input.turns.slice(-12);
+  const summary = buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points, goldenPoint: input.goldenPoint, goals: input.goals });
+  let turns = trimTurns(input.turns.slice(-12));
   if (!HOSTED) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -139,10 +149,14 @@ export async function askFollowUp(input: FollowUpInput): Promise<string> {
   }
 
   const sample = await getSample();
-  let context = chatContext(summary, input.report);
-  if (context.length > MAX_PROMPT_CHARS) {
-    context = chatContext({ ...summary, shots: summary.shots.filter((_, i) => i % 4 === 0) }, input.report);
+  // Fit the in-page prompt cap: thin the shot list, then drop the oldest turns.
+  let slim = summary;
+  const size = () => chatContext(slim, input.report).length + turns.reduce((a, t) => a + t.content.length, 0);
+  while (size() > MAX_PROMPT_CHARS && slim.shots.length > 20) {
+    slim = { ...slim, shots: slim.shots.filter((_, i) => i % 2 === 0) };
   }
+  while (size() > MAX_PROMPT_CHARS && turns.length > 1) turns = trimTurns(turns.slice(1));
+  const context = chatContext(slim, input.report);
   try {
     const { text } = await sample([{ role: "user", content: context }, ...turns], {
       cache: false,

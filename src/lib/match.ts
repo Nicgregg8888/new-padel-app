@@ -16,6 +16,8 @@ export interface MatchRecord {
   report?: CoachReport;
   /** The user's calls on how each rally ended. */
   points?: PointTag[];
+  /** Games are decided by a golden point at 40-40 (no advantage). */
+  goldenPoint?: boolean;
   /** Simulated sample data, never saved. */
   demo?: boolean;
 }

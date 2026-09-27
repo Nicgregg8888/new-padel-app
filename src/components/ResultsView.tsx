@@ -6,7 +6,9 @@ import { PlayersContext } from "../lib/players";
 import { CoachPanel } from "./CoachPanel";
 import { CourtMap } from "./CourtMap";
 import { editShot, swapPlayers } from "../analysis/corrections";
+import type { Goal } from "../analysis/goals";
 import { analysedSeconds } from "../analysis/reliability";
+import { GoalsPanel } from "./GoalsPanel";
 import { ReliabilityPanel } from "./ReliabilityPanel";
 import { Highlights } from "./Highlights";
 import { SwapPlayers } from "./SwapPlayers";
@@ -21,11 +23,14 @@ interface Props {
   match: MatchRecord;
   /** The match video, or null when viewing a saved match from history. */
   src: string | null;
-  onChange: (m: MatchRecord) => void;
+  /** Apply an update to the latest version of this match (safe after async work). */
+  onChange: (update: (m: MatchRecord) => MatchRecord) => void;
   onReanalyze: (() => void) | null;
+  goals: Goal[];
+  onGoalsChange: (g: Goal[]) => void;
 }
 
-export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
+export function ResultsView({ match, src, onChange, onReanalyze, goals, onGoalsChange }: Props) {
   const { result } = match;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
@@ -173,14 +178,14 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
               calibrated={result.calibrated}
               names={match.names}
               me={match.me}
-              onRename={(id, name) => onChange({ ...match, names: { ...match.names, [id]: name } })}
-              onSetMe={(id) => onChange({ ...match, me: id })}
+              onRename={(id, name) => onChange((m) => ({ ...m, names: { ...m.names, [id]: name } }))}
+              onSetMe={(id) => onChange((m) => ({ ...m, me: id }))}
             />
             {src && result.frames.length > 0 && result.players.length > 1 && (
               <SwapPlayers
                 players={result.players.map((p) => p.playerId)}
                 currentTime={() => videoRef.current?.currentTime ?? 0}
-                onSwap={(a, b, from) => onChange({ ...match, result: swapPlayers(result, a, b, from) })}
+                onSwap={(a, b, from) => onChange((m) => ({ ...m, result: swapPlayers(m.result, a, b, from) }))}
               />
             )}
           </section>
@@ -208,18 +213,25 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
           <section className="panel span-3">
             <h2>Points</h2>
             <PointsPanel
+              golden={!!match.goldenPoint}
+              onGoldenChange={(goldenPoint) => onChange((m) => ({ ...m, goldenPoint }))}
               rallies={result.rallies}
               shots={result.shots}
               tags={match.points ?? []}
-              onChange={(points) => onChange({ ...match, points })}
+              onChange={(points) => onChange((m) => ({ ...m, points }))}
               onPlay={src ? play : null}
             />
           </section>
 
           <section className="panel">
+            <h2>Your goals</h2>
+            <GoalsPanel match={match} goals={goals} onGoalsChange={onGoalsChange} />
+          </section>
+
+          <section className="panel">
             <h2>Highlights</h2>
             <Highlights
-              onEditShot={(shot, patch) => onChange({ ...match, result: editShot(result, shot, patch) })}
+              onEditShot={(shot, patch) => onChange((m) => ({ ...m, result: editShot(m.result, shot, patch) }))}
               shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
           </section>
 
@@ -233,8 +245,10 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
               names={match.names}
               me={match.me}
               points={match.points ?? []}
+              goldenPoint={!!match.goldenPoint}
+              goals={goals}
               report={match.report ?? null}
-              onReport={(report) => onChange({ ...match, report: report ?? undefined })}
+              onReport={(report) => onChange((m) => ({ ...m, report: report ?? undefined }))}
               onSeek={seek}
             />
           </section>

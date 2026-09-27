@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnalysisResult } from "./analysis/types";
 import { AnalyzingView } from "./components/AnalyzingView";
 import { HistoryView } from "./components/HistoryView";
 import { ResultsView } from "./components/ResultsView";
 import { SetupView, type AnalysisSettings } from "./components/SetupView";
 import { Uploader } from "./components/Uploader";
-import { listMatches, loadPlayerPrefs, saveMatch, savePlayerPrefs } from "./lib/history";
+import type { Goal } from "./analysis/goals";
+import { listMatches, loadGoals, loadPlayerPrefs, saveGoals, saveMatch, savePlayerPrefs } from "./lib/history";
 import { demoResult } from "./analysis/demo";
 import { demoMatch, newMatch, type MatchRecord } from "./lib/match";
 
@@ -25,8 +26,19 @@ const STEPS = [
 
 export default function App() {
   const [video, setVideo] = useState<{ url: string; name: string } | null>(null);
-  const [stage, setStage] = useState<Stage>({ kind: "upload" });
+  const [stage, setStageState] = useState<Stage>({ kind: "upload" });
+  // Always the latest stage, for updates that land after async work.
+  const stageRef = useRef<Stage>(stage);
+  const setStage = useCallback((next: Stage) => {
+    stageRef.current = next;
+    setStageState(next);
+  }, []);
   const [recent, setRecent] = useState<MatchRecord[]>([]);
+  const [goals, setGoalsState] = useState<Goal[]>(loadGoals);
+  const setGoals = (g: Goal[]) => {
+    setGoalsState(g);
+    saveGoals(g);
+  };
 
   useEffect(() => () => {
     if (video) URL.revokeObjectURL(video.url);
@@ -50,11 +62,31 @@ export default function App() {
     [video],
   );
 
-  const updateMatch = (match: MatchRecord) => {
-    setStage((s) => (s.kind === "results" ? { ...s, match } : s));
+  const persist = (match: MatchRecord) => {
     if (match.demo) return;
     saveMatch(match);
     savePlayerPrefs({ names: match.names, me: match.me });
+  };
+
+  /**
+   * Update a match from its latest state, never a stale copy: a coach report
+   * can arrive a minute after it was requested, after other edits, or after
+   * the user opened a different match.
+   */
+  const updateMatch = (id: string) => (update: (m: MatchRecord) => MatchRecord) => {
+    const current = stageRef.current;
+    if (current.kind === "results" && current.match.id === id) {
+      const match = update(current.match);
+      stageRef.current = { ...current, match };
+      setStage(stageRef.current);
+      persist(match);
+      return;
+    }
+    // Not on screen any more: apply it to the saved copy instead.
+    listMatches().then((all) => {
+      const saved = all.find((m) => m.id === id);
+      if (saved) persist(update(saved));
+    });
   };
 
   return (
@@ -114,12 +146,15 @@ export default function App() {
             key={stage.match.id}
             match={stage.match}
             src={stage.withVideo && video ? video.url : null}
-            onChange={updateMatch}
+            onChange={updateMatch(stage.match.id)}
+            goals={goals}
+            onGoalsChange={setGoals}
             onReanalyze={stage.withVideo && video ? () => setStage({ kind: "setup" }) : null}
           />
         )}
         {stage.kind === "history" && (
           <HistoryView
+            goals={goals}
             onOpen={(match) => setStage({ kind: "results", match, withVideo: false })}
             onNew={reset}
           />

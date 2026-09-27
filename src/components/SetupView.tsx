@@ -6,6 +6,7 @@ import type { CourtCorners, Point } from "../analysis/types";
 import { projectedCourtLines } from "../lib/draw";
 import { HOSTED } from "../lib/hosted";
 import { fmtTime } from "../lib/format";
+import { knownDuration } from "../lib/video";
 
 export interface AnalysisSettings {
   corners: CourtCorners;
@@ -125,8 +126,11 @@ export function SetupView({ src, onStart, onBack }: Props) {
             playsInline
             preload="auto"
             onLoadedMetadata={(e) => {
-              setDuration(e.currentTarget.duration);
-              e.currentTarget.currentTime = Math.min(1, e.currentTarget.duration / 2);
+              const v = e.currentTarget;
+              knownDuration(v).then((d) => {
+                setDuration(d);
+                v.currentTime = Math.min(1, d / 2);
+              });
             }}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
             onSeeked={() => {

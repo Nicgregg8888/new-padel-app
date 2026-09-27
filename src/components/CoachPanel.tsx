@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { CoachReport } from "../../shared/coach";
 import type { ChatTurn } from "../../shared/coachPrompt";
 import { PLAYER_COLORS } from "../analysis/tracker";
+import type { Goal } from "../analysis/goals";
 import type { AnalysisResult, PointTag } from "../analysis/types";
 import { askFollowUp, generateReport } from "../lib/coachClient";
 import { fmtTime } from "../lib/format";
@@ -15,6 +16,8 @@ interface Props {
   names: Record<number, string>;
   me: number | null;
   points: PointTag[];
+  goldenPoint: boolean;
+  goals: Goal[];
   report: CoachReport | null;
   onReport: (r: CoachReport | null) => void;
   onSeek: (t: number) => void;
@@ -29,7 +32,7 @@ const SUGGESTIONS = [
   "Plan my next practice session (60 minutes).",
 ];
 
-export function CoachPanel({ result, src, names, me, points, report, onReport, onSeek }: Props) {
+export function CoachPanel({ result, src, names, me, points, goldenPoint, goals, report, onReport, onSeek }: Props) {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [level, setLevel] = useState("Intermediate");
   const [focus, setFocus] = useState("");
@@ -43,6 +46,8 @@ export function CoachPanel({ result, src, names, me, points, report, onReport, o
         names,
         me,
         points,
+        goldenPoint,
+        goals,
         level,
         focus,
         onStep: (step) => setStatus({ kind: "loading", step }),
@@ -94,12 +99,20 @@ export function CoachPanel({ result, src, names, me, points, report, onReport, o
           {status.kind === "error" && <p className="error">{status.message}</p>}
         </div>
       )}
-      <Chat result={result} names={names} me={me} points={points} report={report} />
+      <Chat result={result} names={names} me={me} points={points} goldenPoint={goldenPoint} goals={goals} report={report} />
     </div>
   );
 }
 
-function Chat({ result, names, me, points, report }: Pick<Props, "result" | "names" | "me" | "points" | "report">) {
+function Chat({
+  result,
+  names,
+  me,
+  points,
+  goldenPoint,
+  goals,
+  report,
+}: Pick<Props, "result" | "names" | "me" | "points" | "goldenPoint" | "goals" | "report">) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<string | null>(null);
@@ -121,6 +134,8 @@ function Chat({ result, names, me, points, report }: Pick<Props, "result" | "nam
         names,
         me,
         points,
+        goldenPoint,
+        goals,
         report,
         turns: next,
         signal: ctl.current.signal,

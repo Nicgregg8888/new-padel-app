@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { ENDING_LABELS, PATTERN_LABELS, defaultBy, lastHitter, pointStats, teamOf, type WinRate } from "../analysis/points";
+import { scoreMatch } from "../analysis/scoring";
 import { PLAYER_COLORS } from "../analysis/tracker";
 import type { PairPattern, PointEnding, PointTag, Rally, Shot } from "../analysis/types";
 import { fmtTime, pct } from "../lib/format";
@@ -7,6 +8,8 @@ import { usePlayers } from "../lib/players";
 import type { Playlist } from "./MatchPlayer";
 
 interface Props {
+  golden: boolean;
+  onGoldenChange: (golden: boolean) => void;
   rallies: Rally[];
   shots: Shot[];
   tags: PointTag[];
@@ -32,9 +35,10 @@ export function positioningInsight(team: string, rates: Partial<Record<PairPatte
   )} when ${PATTERN_LABELS[worst[0]].toLowerCase()}.`;
 }
 
-export function PointsPanel({ rallies, shots, tags, onChange, onPlay }: Props) {
+export function PointsPanel({ rallies, shots, tags, onChange, onPlay, golden, onGoldenChange }: Props) {
   const { name, me } = usePlayers();
   const stats = useMemo(() => pointStats(rallies, tags), [rallies, tags]);
+  const score = useMemo(() => scoreMatch(rallies, shots, tags, golden), [rallies, shots, tags, golden]);
   const byRally = useMemo(() => new Map(tags.map((t) => [t.rally, t])), [tags]);
   const teamName = (t: "A" | "B") => (t === "A" ? `${name(0)} & ${name(1)}` : `${name(2)} & ${name(3)}`);
   const myTeam = me === null ? "A" : teamOf(me);
@@ -57,18 +61,75 @@ export function PointsPanel({ rallies, shots, tags, onChange, onPlay }: Props) {
 
   return (
     <div className="points">
-      <div className="score-line">
-        {teams.map((t, i) => (
-          <span key={t} className="score-team">
-            {i === 1 && <span className="score-sep">–</span>}
-            <span className="muted small">{teamName(t)}</span>
-            <b>{stats.score[t]}</b>
+      <div className="scoreboard-wrap">
+        <table className="scoreboard">
+          <caption className="sr-only">Score from the tagged points</caption>
+          <thead>
+            <tr>
+              <th scope="col">Pair</th>
+              {score.sets.map((_, i) => (
+                <th key={i} scope="col">
+                  Set {i + 1}
+                </th>
+              ))}
+              <th scope="col">{score.inTiebreak ? "Tiebreak" : "Game"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map((t) => (
+              <tr key={t}>
+                <th scope="row">
+                  <span className={score.server === t ? "serving" : "serving off"} title="Serving" aria-hidden>
+                    ●
+                  </span>
+                  {teamName(t)}
+                  {score.server === t && <span className="sr-only"> (serving)</span>}
+                </th>
+                {score.sets.map((set, i) => (
+                  <td
+                    key={i}
+                    className={
+                      i === score.sets.length - 1 && score.setInProgress
+                        ? "current"
+                        : set[t] > set[t === "A" ? "B" : "A"]
+                          ? "won"
+                          : ""
+                    }
+                  >
+                    {set[t]}
+                    {set.tiebreak && <sup>{set.tiebreak[t]}</sup>}
+                  </td>
+                ))}
+                <td className="game-pts">{score.points[t]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="score-meta">
+          <label className="toggle small">
+            <input id="golden-point" type="checkbox" checked={golden} onChange={(e) => onGoldenChange(e.target.checked)} />
+            Golden point at 40–40
+          </label>
+          <span className="muted small">
+            {stats.tagged} of {rallies.length} points tagged · scored from the first tagged point
           </span>
-        ))}
-        <span className="muted small score-progress">
-          {stats.tagged} of {rallies.length} points tagged
-        </span>
+        </div>
       </div>
+      {score.games.length > 0 && (
+        <dl className="serve-stats">
+          {teams.map((t) => (
+            <div key={t}>
+              <dt>{teamName(t)}</dt>
+              <dd>
+                Break points won <b>{score.breakPoints[t].won}/{score.breakPoints[t].chances}</b> · Service games held{" "}
+                <b>
+                  {score.holds[t].won}/{score.holds[t].played}
+                </b>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
 
       {stats.tagged === 0 ? (
         <p className="hint">

@@ -5,7 +5,7 @@ import { defaultBy, lastHitter, pointStats } from "../src/analysis/points";
 import { pairPattern, rallyPatterns } from "../src/analysis/tactics";
 import type { Rally, SampledFrame, Shot } from "../src/analysis/types";
 import { positioningInsight } from "../src/components/PointsPanel";
-import { CoachRequestSchema } from "../shared/coach";
+import { ChatRequestSchema, CoachRequestSchema } from "../shared/coach";
 
 describe("pair patterns", () => {
   it("names each positioning", () => {
@@ -72,5 +72,24 @@ describe("demo points", () => {
     const parsed = CoachRequestSchema.safeParse({ summary, keyframes: [] });
     expect(parsed.success).toBe(true);
     expect(summary.points?.tagged).toBe(tags.length);
+  });
+});
+
+describe("chat request limits", () => {
+  const r = demoResult(1);
+  const summary = buildCoachSummary(r, { me: 0 });
+  it("accepts a long coach answer in the history but caps the player's questions", () => {
+    const ok = ChatRequestSchema.safeParse({
+      summary,
+      report: null,
+      messages: [
+        { role: "user", content: "Plan my practice" },
+        { role: "assistant", content: "x".repeat(9000) },
+        { role: "user", content: "Thanks, and the warm-up?" },
+      ],
+    });
+    expect(ok.success).toBe(true);
+    const tooLong = ChatRequestSchema.safeParse({ summary, report: null, messages: [{ role: "user", content: "x".repeat(5000) }] });
+    expect(tooLong.success).toBe(false);
   });
 });

@@ -53,7 +53,8 @@ app.post("/api/coach", async (req, res) => {
 
 app.post("/api/chat", async (req, res) => {
   const parsed = ChatRequestSchema.safeParse(req.body);
-  if (!parsed.success || parsed.data.messages.at(-1)?.role !== "user") {
+  const msgs = parsed.success ? parsed.data.messages : [];
+  if (!parsed.success || msgs[0]?.role !== "user" || msgs.at(-1)?.role !== "user") {
     res.status(400).json({ error: "Invalid request" });
     return;
   }

@@ -28,7 +28,13 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
     let video: HTMLVideoElement | null = null;
     (async () => {
       try {
-        video = await loadHiddenVideo(src, { attach: true });
+        const loaded = await loadHiddenVideo(src, { attach: true });
+        // Cancelled (or StrictMode re-ran the effect) while loading: don't leak the element.
+        if (ctrl.signal.aborted) {
+          loaded.remove();
+          return;
+        }
+        video = loaded;
         const c = canvas.current!;
         c.width = Math.min(960, video.videoWidth);
         c.height = Math.round((c.width * video.videoHeight) / video.videoWidth);
@@ -39,7 +45,7 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
           signal: ctrl.signal,
           onProgress: (f, frame) => {
             setProgress(f);
-            setStatus(`Tracking players · ${fmtTime(frame.t)} / ${fmtTime(video!.duration)}`);
+            setStatus(`Tracking players · ${fmtTime(frame.t)}`);
             setPlayers((n) => Math.max(n, frame.poses.length));
             ctx.drawImage(video!, 0, 0, c.width, c.height);
             drawPoses(ctx, frame.poses, c.width, c.height);

@@ -8,6 +8,12 @@ const WASM_URL = `${import.meta.env.BASE_URL}mediapipe`;
 const modelUrl = (m: PoseModel) =>
   `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${m}/float16/latest/pose_landmarker_${m}.task`;
 
+async function fetchModel(m: PoseModel): Promise<Uint8Array> {
+  const res = await fetch(modelUrl(m));
+  if (!res.ok) throw new Error(`Could not download the ${m} pose model (${res.status})`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /**
  * Artifacts only serve web file types, so the hosted build ships each model
  * as base64 text next to the page and decodes it here.
@@ -31,9 +37,10 @@ export async function createPoseLandmarkers(
   numPoses: number,
 ): Promise<PoseLandmarker[]> {
   const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
-  const source = HOSTED ? { modelAssetBuffer: await hostedModel(model) } : { modelAssetPath: modelUrl(model) };
+  // Fetch the model once and share the bytes between all tiles.
+  const bytes = HOSTED ? await hostedModel(model) : await fetchModel(model);
   const options = (delegate: "GPU" | "CPU") => ({
-    baseOptions: { ...source, delegate },
+    baseOptions: { modelAssetBuffer: bytes, delegate },
     runningMode: "VIDEO" as const,
     numPoses,
     minPoseDetectionConfidence: 0.4,
@@ -48,7 +55,12 @@ export async function createPoseLandmarkers(
     }
   };
   const out: PoseLandmarker[] = [];
-  // Sequential: parallel GPU context creation is flaky on some browsers.
-  for (let i = 0; i < count; i++) out.push(await one());
+  try {
+    // Sequential: parallel GPU context creation is flaky on some browsers.
+    for (let i = 0; i < count; i++) out.push(await one());
+  } catch (e) {
+    for (const l of out) l.close();
+    throw e;
+  }
   return out;
 }

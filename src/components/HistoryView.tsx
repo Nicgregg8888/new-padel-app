@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import { describeGoal, evaluateGoal, formatGoalValue, type Goal } from "../analysis/goals";
+import { matchWinner, summarizePeople, type PersonProfile } from "../analysis/people";
+import { teamOf } from "../analysis/points";
 import { analysedSeconds } from "../analysis/reliability";
 import { fmtTime, pct } from "../lib/format";
 import { deleteMatch, listMatches } from "../lib/history";
 import { playerName, type MatchRecord } from "../lib/match";
 
 interface Props {
+  goals: Goal[];
   onOpen: (m: MatchRecord) => void;
   onNew: () => void;
 }
@@ -50,7 +54,7 @@ const METRICS: Metric[] = [
   },
 ];
 
-export function HistoryView({ onOpen, onNew }: Props) {
+export function HistoryView({ goals, onOpen, onNew }: Props) {
   const [matches, setMatches] = useState<MatchRecord[] | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -96,6 +100,53 @@ export function HistoryView({ onOpen, onNew }: Props) {
             )}
           </section>
 
+          {goals.length > 0 && withMe.length > 0 && (
+            <section className="panel">
+              <h2>Goals, match by match</h2>
+              <div className="table-scroll">
+                <table className="goal-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Goal</th>
+                      {withMe.slice(-8).map((m) => (
+                        <th key={m.id} scope="col" title={m.title}>
+                          {new Date(m.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        </th>
+                      ))}
+                      <th scope="col">Met</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {goals.map((g) => {
+                      const rs = withMe.slice(-8).map((m) => evaluateGoal(m, g));
+                      const checked = rs.filter((r) => r.met !== null);
+                      return (
+                        <tr key={g.metric}>
+                          <th scope="row">{describeGoal(g)}</th>
+                          {rs.map((r, i) => (
+                            <td
+                              key={i}
+                              className={r.met === null ? "na" : r.met ? "met" : "missed"}
+                              title={r.value === null ? "No data" : formatGoalValue(g.metric, r.value)}
+                            >
+                              {r.met === null ? "–" : r.met ? "✓" : "✗"}
+                              <span className="sr-only">{r.met === null ? "no data" : r.met ? "met" : "missed"}</span>
+                            </td>
+                          ))}
+                          <td className="goal-total">
+                            {checked.filter((r) => r.met).length}/{checked.length}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          <People matches={matches} />
+
           <section className="panel">
             <h2>All matches</h2>
             <ul className="match-list">
@@ -107,6 +158,7 @@ export function HistoryView({ onOpen, onNew }: Props) {
                       {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(analysedSeconds(m.result))} ·{" "}
                       {m.result.shots.length} shots
                       {m.me !== null && ` · you: ${playerName(m, m.me)}`}
+                      {m.me !== null && resultLabel(m)}
                       {m.report && " · coached"}
                     </span>
                   </button>
@@ -202,5 +254,67 @@ function Trend({ metric, matches }: { metric: Metric; matches: MatchRecord[] }) 
         </text>
       </svg>
     </figure>
+  );
+}
+
+function resultLabel(m: MatchRecord): string {
+  const w = matchWinner(m);
+  if (!w || m.me === null) return "";
+  return w === teamOf(m.me) ? " · won" : " · lost";
+}
+
+function People({ matches }: { matches: MatchRecord[] }) {
+  const s = summarizePeople(matches);
+  if (!s.partners.length && !s.rivals.length) {
+    return (
+      <section className="panel">
+        <h2>Partners and rivals</h2>
+        <p className="muted">
+          Name the players in your matches (and mark yourself) to build records with each partner and against each rival.
+          Tag points so each match has a result.
+        </p>
+      </section>
+    );
+  }
+  const table = (title: string, rows: PersonProfile[], note: string) => (
+    <div>
+      <h3>{title}</h3>
+      <p className="muted small">{note}</p>
+      <table className="people-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Matches</th>
+            <th scope="col">Won–lost</th>
+            <th scope="col">Win rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((p) => (
+            <tr key={p.name}>
+              <th scope="row">{p.name}</th>
+              <td>{p.matches}</td>
+              <td>
+                {p.won}–{p.lost}
+              </td>
+              <td>{p.won + p.lost ? pct(p.won / (p.won + p.lost)) : "–"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  return (
+    <section className="panel">
+      <h2>Partners and rivals</h2>
+      <p className="small">
+        Your record: <b>{s.me.won}–{s.me.lost}</b> in {s.me.matches} {s.me.matches === 1 ? "match" : "matches"}
+        {s.me.matches - s.me.won - s.me.lost > 0 && ` (${s.me.matches - s.me.won - s.me.lost} without a result yet)`}
+      </p>
+      <div className="people-grid">
+        {s.partners.length > 0 && table("Partners", s.partners, "Your results playing with them.")}
+        {s.rivals.length > 0 && table("Rivals", s.rivals, "Your results playing against them.")}
+      </div>
+    </section>
   );
 }

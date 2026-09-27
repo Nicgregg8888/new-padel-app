@@ -38,6 +38,19 @@ export const CoachRequestSchema = z.object({
         perPlayer: z.record(z.string(), z.record(z.enum(["winner", "forced", "unforced"]), z.number())),
       })
       .optional(),
+    goals: z
+      .array(z.object({ goal: z.string().max(120), value: z.string().max(40).optional(), met: z.boolean().optional() }))
+      .max(10)
+      .optional(),
+    score: z
+      .object({
+        sets: z.array(z.object({ A: z.number(), B: z.number() })).max(10),
+        currentGame: z.object({ A: z.string().max(4), B: z.string().max(4) }),
+        goldenPoint: z.boolean(),
+        breakPoints: z.record(z.enum(["A", "B"]), z.object({ won: z.number(), chances: z.number() })),
+        serviceGamesHeld: z.record(z.enum(["A", "B"]), z.object({ won: z.number(), played: z.number() })),
+      })
+      .optional(),
     teams: z
       .array(
         z.object({
@@ -123,7 +136,13 @@ export const ChatRequestSchema = z.object({
   summary: CoachRequestSchema.shape.summary,
   report: CoachReportSchema.nullable(),
   messages: z
-    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(4000) }))
+    .array(
+      z.union([
+        z.object({ role: z.literal("user"), content: z.string().min(1).max(4000) }),
+        // The coach's own earlier answers come back as context and can be long.
+        z.object({ role: z.literal("assistant"), content: z.string().min(1).max(40000) }),
+      ]),
+    )
     .min(1)
     .max(40),
 });

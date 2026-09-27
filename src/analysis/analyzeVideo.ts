@@ -6,6 +6,7 @@ import { computePlayerStats, frameAt } from "./stats";
 import { computeTeamTactics, rallyPatterns } from "./tactics";
 import { computeTiles, poseQuality, tileToFrame } from "./tiles";
 import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
+import { knownDuration } from "../lib/video";
 import type { AnalysisResult, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
 
 export interface AnalyzeOptions {
@@ -72,15 +73,25 @@ function samplePlayback(
       if (done) return;
       done = true;
       clearInterval(watchdog);
+      document.removeEventListener("visibilitychange", onVisible);
       video.pause();
       video.removeEventListener("ended", onEnded);
       if (err) reject(err);
       else resolve();
     };
     const onEnded = () => finish();
+    // A background tab stops presenting frames: wait, then pick up again when
+    // the tab is visible rather than treating it as a stall.
+    const onVisible = () => {
+      if (document.hidden || done) return;
+      lastProgress = performance.now();
+      if (video.paused) video.play().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
     // Some browsers stop presenting frames for a video that isn't visible.
     const watchdog = setInterval(() => {
       if (signal?.aborted) finish(new DOMException("Analysis cancelled", "AbortError"));
+      else if (document.hidden) lastProgress = performance.now();
       else if (performance.now() - lastProgress > 5000) finish(new StallError("Playback stalled"));
     }, 500);
 
@@ -135,6 +146,10 @@ export async function analyzeVideo(
   const tiles = computeTiles(opts.corners, aspect);
   // Two players per half of the court, per tile; overlaps are deduplicated below.
   const landmarkers = await createPoseLandmarkers(opts.model, tiles.length, 2);
+  if (opts.signal?.aborted) {
+    for (const l of landmarkers) l.close();
+    throw new DOMException("Analysis cancelled", "AbortError");
+  }
   const MAX_TILE_SIDE = 640;
   const canvases = tiles.map((t) => {
     const w = t.w * video.videoWidth;
@@ -153,7 +168,7 @@ export async function analyzeVideo(
   ballCanvas.height = Math.round((384 * video.videoHeight) / Math.max(1, video.videoWidth));
   const ballCtx = ballCanvas.getContext("2d", { willReadFrequently: true })!;
   const ballDetector = new BallDetector();
-  let ballTracker = new BallTracker();
+  const ballTracker = new BallTracker();
   const findBall = (t: number) => {
     if (!opts.trackBall) return;
     ballCtx.drawImage(video, 0, 0, ballCanvas.width, ballCanvas.height);
@@ -163,12 +178,13 @@ export async function analyzeVideo(
     ballTracker.push(t, cands);
   };
 
-  const duration = video.duration;
+  const duration = await knownDuration(video);
+  if (!(duration > 0)) throw new Error("Couldn't work out how long this video is. Try re-saving it as MP4");
   const start = Math.max(0, Math.min(opts.range?.start ?? 0, duration));
   const end = Math.max(start + 0.5, Math.min(opts.range?.end ?? duration, duration));
   const step = 1 / opts.sampleFps;
-  let tracker = new PlayerTracker();
-  let frames: SampledFrame[] = [];
+  const tracker = new PlayerTracker();
+  const frames: SampledFrame[] = [];
   let lastTs = -1;
 
   const processFrame = (t: number) => {
@@ -229,10 +245,9 @@ export async function analyzeVideo(
     }
     if (!fast) {
       // Slow but dependable: seek to every sample.
-      tracker = new PlayerTracker();
-      ballTracker = new BallTracker();
-      frames = [];
-      for (let t = start; t < end; t += step) {
+      // Pick up where fast playback stopped instead of starting over.
+      const resumeAt = frames.length ? frames[frames.length - 1].t + step : start;
+      for (let t = resumeAt; t < end; t += step) {
         if (opts.signal?.aborted) throw new DOMException("Analysis cancelled", "AbortError");
         await seek(video, t);
         findBall(t);
