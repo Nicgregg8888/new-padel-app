@@ -10,7 +10,11 @@ Upload a padel match recording and get:
 
 The video itself never leaves the device. Only when you ask for an AI report are a few JPEG stills and the numeric stats sent to the server.
 
-## Quick start
+## Open it
+
+The quickest way is the hosted version on claude.ai: open the link, drop in a video. The AI coach runs on your own Claude account there, so no API key is needed.
+
+## Run it yourself
 
 ```bash
 npm install
@@ -31,6 +35,14 @@ Tests and type-checking:
 npm test
 npm run typecheck
 ```
+
+Hosted (claude.ai Artifact) bundle:
+
+```bash
+npm run build:hosted   # writes dist-hosted/: page.html, assets/, mediapipe/, models/
+```
+
+The hosted build has no server: the pose models ship next to the page (as base64 text, since artifacts only serve web file types) and the coach asks Claude through the viewer's account instead of `/api/coach`.
 
 ## Filming tips
 

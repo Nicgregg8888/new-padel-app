@@ -3,6 +3,7 @@ import { DEFAULT_CORNERS, courtToImageHomography } from "../analysis/court";
 import type { PoseModel } from "../analysis/pose";
 import type { CourtCorners, Point } from "../analysis/types";
 import { projectedCourtLines } from "../lib/draw";
+import { HOSTED } from "../lib/hosted";
 import { fmtTime } from "../lib/format";
 
 export interface AnalysisSettings {
@@ -137,7 +138,7 @@ export function SetupView({ src, onStart, onBack }: Props) {
           <select value={model} onChange={(e) => setModel(e.target.value as PoseModel)}>
             <option value="lite">Lite — fastest</option>
             <option value="full">Full — balanced</option>
-            <option value="heavy">Heavy — most accurate</option>
+            {!HOSTED && <option value="heavy">Heavy — most accurate</option>}
           </select>
         </label>
         <label>

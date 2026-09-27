@@ -3,6 +3,7 @@ import { buildCoachSummary, pickKeyShots, planKeyframes } from "../src/analysis/
 import { computePlayerStats } from "../src/analysis/stats";
 import type { AnalysisResult, SampledFrame, Shot } from "../src/analysis/types";
 import { CoachRequestSchema } from "../shared/coach";
+import { normalizeReport } from "../shared/coachPrompt";
 import { framePose } from "./fixtures";
 
 // Player walks 1 m/s from the baseline (y=19) toward the net for 5 s.
@@ -73,5 +74,28 @@ describe("coach request", () => {
     const picked = pickKeyShots(many, 6);
     expect(picked).toHaveLength(6);
     expect(picked[5].t).toBeGreaterThan(20);
+  });
+});
+
+describe("normalizeReport", () => {
+  it("keeps well-formed parts of a loosely shaped reply and drops the rest", () => {
+    const report = normalizeReport({
+      headline: "Solid net play",
+      summary: "Team A held the net.",
+      players: [{ playerId: 0, strengths: ["volleys", 3], drills: [{ name: "Wall drill" }] }, { playerId: "x" }],
+      teamTactics: [{ team: "A", observations: ["Stay together"] }, { team: "C" }],
+      keyMoments: [{ t: 12, title: "Smash" }, { title: "No time" }],
+    });
+    expect(report.players).toHaveLength(1);
+    expect(report.players[0].strengths).toEqual(["volleys"]);
+    expect(report.players[0].improvements).toEqual([]);
+    expect(report.players[0].drills).toEqual([{ name: "Wall drill", description: "" }]);
+    expect(report.teamTactics).toHaveLength(1);
+    expect(report.keyMoments).toEqual([{ t: 12, title: "Smash", observation: "" }]);
+    expect(report.caveats).toEqual([]);
+  });
+
+  it("rejects a reply without a headline", () => {
+    expect(() => normalizeReport({ summary: "x" })).toThrow();
   });
 });

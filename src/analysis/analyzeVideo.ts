@@ -96,17 +96,30 @@ export async function captureFrames(
   video: HTMLVideoElement,
   times: number[],
   maxWidth = 768,
-): Promise<string[]> {
+): Promise<Blob[]> {
   const scale = Math.min(1, maxWidth / video.videoWidth);
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(video.videoWidth * scale);
   canvas.height = Math.round(video.videoHeight * scale);
   const ctx = canvas.getContext("2d")!;
-  const out: string[] = [];
+  const out: Blob[] = [];
   for (const t of times) {
     await seek(video, t);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    out.push(canvas.toDataURL("image/jpeg", 0.75));
+    out.push(
+      await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not capture a frame"))), "image/jpeg", 0.75),
+      ),
+    );
   }
   return out;
+}
+
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
 }

@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AnalysisResult } from "../analysis/types";
 import { fmtTime } from "../lib/format";
+import { HOSTED, claudeRuntime, type Downloads } from "../lib/hosted";
 import { CoachPanel } from "./CoachPanel";
 import { CourtMap } from "./CourtMap";
 import { MatchPlayer } from "./MatchPlayer";
@@ -23,12 +24,31 @@ export function ResultsView({ src, name, result, onReanalyze }: Props) {
     v.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Hosted pages can't start downloads themselves; they ask the Claude viewer to save the file.
+  const [downloads, setDownloads] = useState<Downloads | null>(null);
+  useEffect(() => {
+    if (!HOSTED) return;
+    let live = true;
+    claudeRuntime()
+      ?.use("downloads")
+      .then((d) => live && setDownloads(d))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const exportJson = () => {
     const { frames: _frames, ...summary } = result;
-    const blob = new Blob([JSON.stringify(summary, null, 2)], { type: "application/json" });
+    const json = JSON.stringify(summary, null, 2);
+    const filename = `${name.replace(/\.[^.]+$/, "")}-analysis.json`;
+    if (HOSTED) {
+      downloads?.save({ filename, data: json }).catch(() => {});
+      return;
+    }
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${name.replace(/\.[^.]+$/, "")}-analysis.json`;
+    a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -47,7 +67,9 @@ export function ResultsView({ src, name, result, onReanalyze }: Props) {
         <Kpi label="Avg. rally" value={avgRally ? `${avgRally.toFixed(1)} shots` : "—"} />
         <div className="kpi-actions">
           <button className="ghost" onClick={onReanalyze}>Re-analyze</button>
-          <button className="ghost" onClick={exportJson}>Export JSON</button>
+          {(!HOSTED || downloads) && (
+            <button className="ghost" onClick={exportJson}>Export JSON</button>
+          )}
         </div>
       </section>
       {!result.calibrated && (

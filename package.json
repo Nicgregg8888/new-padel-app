@@ -10,6 +10,7 @@
     "dev:web": "vite",
     "dev:api": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
+    "build:hosted": "vite build --mode hosted --base ./ --outDir dist-hosted && node scripts/make-hosted-page.mjs",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc -b",
     "test": "vitest run"
