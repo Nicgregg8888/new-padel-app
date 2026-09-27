@@ -40,7 +40,10 @@ export function planKeyframes(result: AnalysisResult, n = 6): KeyframePlan[] {
   }));
 }
 
-export function buildCoachSummary(result: AnalysisResult): CoachRequest["summary"] {
+export function buildCoachSummary(
+  result: AnalysisResult,
+  people: { names?: Record<number, string>; me?: number | null } = {},
+): CoachRequest["summary"] {
   const { rallies } = result;
   return {
     durationSeconds: round(result.duration, 1),
@@ -49,6 +52,8 @@ export function buildCoachSummary(result: AnalysisResult): CoachRequest["summary
     avgRallyShots: rallies.length ? round(rallies.reduce((a, r) => a + r.shots, 0) / rallies.length, 1) : 0,
     players: result.players.map(({ heatmap: _heatmap, ...p }) => ({
       ...p,
+      ...(people.names?.[p.playerId]?.trim() ? { name: people.names[p.playerId].trim().slice(0, 60) } : {}),
+      ...(people.me === p.playerId ? { isMe: true } : {}),
       distanceMeters: round(p.distanceMeters, 0),
       avgSpeed: round(p.avgSpeed),
       maxSpeed: round(p.maxSpeed),
@@ -60,6 +65,19 @@ export function buildCoachSummary(result: AnalysisResult): CoachRequest["summary
       },
       avgSwingSpeed: round(p.avgSwingSpeed, 1),
       avgNetDistance: round(p.avgNetDistance, 1),
+    })),
+    teams: (result.teams ?? []).map((t) => ({
+      team: t.team,
+      pairedSeconds: round(t.pairedSeconds, 0),
+      togetherNet: round(t.togetherNet),
+      togetherMid: round(t.togetherMid),
+      togetherBack: round(t.togetherBack),
+      staggered: round(t.staggered),
+      split: round(t.split),
+      avgSpacing: round(t.avgSpacing, 1),
+      avgDepthGap: round(t.avgDepthGap, 1),
+      avgLateralGap: round(t.avgLateralGap, 1),
+      netTakings: t.netTakings,
     })),
     shots: result.shots.slice(0, 2000).map((s) => ({
       t: round(s.t, 1),

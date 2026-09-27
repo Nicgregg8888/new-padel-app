@@ -1,27 +1,40 @@
-import { useEffect, useRef, useState } from "react";
-import type { AnalysisResult } from "../analysis/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtTime } from "../lib/format";
 import { HOSTED, claudeRuntime, type Downloads } from "../lib/hosted";
+import { playerName, type MatchRecord } from "../lib/match";
+import { PlayersContext } from "../lib/players";
 import { CoachPanel } from "./CoachPanel";
 import { CourtMap } from "./CourtMap";
-import { MatchPlayer } from "./MatchPlayer";
+import { Highlights } from "./Highlights";
+import { MatchPlayer, type Playlist } from "./MatchPlayer";
+import { PairPlay } from "./PairPlay";
 import { PlayerCards } from "./PlayerCards";
 import { ShotChart } from "./ShotChart";
 
 interface Props {
-  src: string;
-  name: string;
-  result: AnalysisResult;
-  onReanalyze: () => void;
+  match: MatchRecord;
+  /** The match video, or null when viewing a saved match from history. */
+  src: string | null;
+  onChange: (m: MatchRecord) => void;
+  onReanalyze: (() => void) | null;
 }
 
-export function ResultsView({ src, name, result, onReanalyze }: Props) {
+export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
+  const { result } = match;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [playlist, setPlaylist] = useState<Playlist | null>(null);
+  const endPlaylist = useCallback(() => setPlaylist(null), []);
+
   const seek = (t: number) => {
     const v = videoRef.current;
     if (!v) return;
+    setPlaylist(null);
     v.currentTime = t;
     v.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  const play = (p: Playlist) => {
+    setPlaylist(p);
+    videoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   // Hosted pages can't start downloads themselves; they ask the Claude viewer to save the file.
@@ -40,8 +53,8 @@ export function ResultsView({ src, name, result, onReanalyze }: Props) {
 
   const exportJson = () => {
     const { frames: _frames, ...summary } = result;
-    const json = JSON.stringify(summary, null, 2);
-    const filename = `${name.replace(/\.[^.]+$/, "")}-analysis.json`;
+    const json = JSON.stringify({ title: match.title, names: match.names, ...summary, report: match.report }, null, 2);
+    const filename = `${match.title.replace(/\.[^.]+$/, "").replace(/[^\w\- ]+/g, "")}-analysis.json`;
     if (HOSTED) {
       downloads?.save({ filename, data: json }).catch(() => {});
       return;
@@ -53,76 +66,136 @@ export function ResultsView({ src, name, result, onReanalyze }: Props) {
     URL.revokeObjectURL(a.href);
   };
 
+  const players = useMemo(
+    () => ({ name: (id: number) => playerName(match, id), me: match.me }),
+    [match],
+  );
+
   const avgRally = result.rallies.length
     ? result.rallies.reduce((a, r) => a + r.shots, 0) / result.rallies.length
     : 0;
 
   return (
-    <div className="results">
-      <section className="kpis">
-        <Kpi label="Duration" value={fmtTime(result.duration)} />
-        <Kpi label="Players tracked" value={String(result.players.length)} />
-        <Kpi label="Shots detected" value={String(result.shots.length)} />
-        <Kpi label="Rallies" value={String(result.rallies.length)} />
-        <Kpi label="Avg. rally" value={avgRally ? `${avgRally.toFixed(1)} shots` : "—"} />
-        <div className="kpi-actions">
-          <button className="ghost" onClick={onReanalyze}>Re-analyze</button>
-          {(!HOSTED || downloads) && (
-            <button className="ghost" onClick={exportJson}>Export JSON</button>
-          )}
+    <PlayersContext.Provider value={players}>
+      <div className="results">
+        <div className="results-head">
+          <div>
+            <h1 className="match-title">{match.title}</h1>
+            <p className="muted small">
+              Analysed {new Date(match.createdAt).toLocaleString()} · saved in this browser
+            </p>
+          </div>
+          <div className="kpi-actions">
+            {onReanalyze && (
+              <button className="ghost" onClick={onReanalyze}>
+                Re-analyze
+              </button>
+            )}
+            {(!HOSTED || downloads) && (
+              <button className="ghost" onClick={exportJson}>
+                Export JSON
+              </button>
+            )}
+          </div>
         </div>
-      </section>
-      {!result.calibrated && (
-        <p className="notice">
-          Court not calibrated — distances, speeds and positions are approximate. Re-analyze and mark the
-          court corners for accurate numbers.
-        </p>
-      )}
-
-      <div className="results-grid">
-        <section className="panel span-2">
-          <MatchPlayer src={src} result={result} videoRef={videoRef} />
+        <section className="kpis">
+          <Kpi label="Duration" value={fmtTime(result.duration)} />
+          <Kpi label="Players tracked" value={String(result.players.length)} />
+          <Kpi label="Shots detected" value={String(result.shots.length)} />
+          <Kpi label="Rallies" value={String(result.rallies.length)} />
+          <Kpi label="Avg. rally" value={avgRally ? `${avgRally.toFixed(1)} shots` : "—"} />
         </section>
+        {!result.calibrated && (
+          <p className="notice">
+            Court not calibrated: distances, speeds and positions are approximate. Re-analyze and mark the court
+            corners for accurate numbers.
+          </p>
+        )}
+        {!src && (
+          <p className="notice">
+            Viewing a saved match. The video isn't stored, so playback and highlights clips are off; stats, the
+            court map and the coach all still work.
+          </p>
+        )}
 
-        <section className="panel">
-          <h2>Court map</h2>
-          <CourtMap players={result.players} shots={result.shots} onSeek={seek} />
-        </section>
-
-        <section className="panel span-3">
-          <h2>Players</h2>
-          <PlayerCards players={result.players} calibrated={result.calibrated} />
-        </section>
-
-        <section className="panel">
-          <h2>Shot mix</h2>
-          <ShotChart players={result.players} />
-          <h2 className="mt">Rallies</h2>
-          {result.rallies.length ? (
-            <ul className="rally-list">
-              {result.rallies.map((r, i) => (
-                <li key={i}>
-                  <button className="time-link" onClick={() => seek(r.start)}>
-                    {fmtTime(r.start)}
-                  </button>
-                  <span>{r.shots} shots</span>
-                  <span className="muted">{(r.end - r.start).toFixed(0)}s</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">No rallies detected.</p>
+        <div className="results-grid">
+          {src && (
+            <section className="panel span-2">
+              <MatchPlayer
+                src={src}
+                result={result}
+                videoRef={videoRef}
+                playlist={playlist}
+                onPlaylistEnd={endPlaylist}
+              />
+            </section>
           )}
-        </section>
 
-        <section className="panel span-2 coach">
-          <h2>
-            AI coach <span className="badge">Claude</span>
-          </h2>
-          <CoachPanel src={src} result={result} onSeek={seek} />
-        </section>
+          <section className={src ? "panel" : "panel span-2"}>
+            <h2>Court map</h2>
+            <CourtMap players={result.players} shots={result.shots} onSeek={seek} />
+          </section>
+
+          {!src && (
+            <section className="panel">
+              <h2>Shot mix</h2>
+              <ShotChart players={result.players} />
+            </section>
+          )}
+
+          <section className="panel span-3">
+            <h2>Players</h2>
+            <PlayerCards
+              players={result.players}
+              calibrated={result.calibrated}
+              names={match.names}
+              me={match.me}
+              onRename={(id, name) => onChange({ ...match, names: { ...match.names, [id]: name } })}
+              onSetMe={(id) => onChange({ ...match, me: id })}
+            />
+          </section>
+
+          <section className="panel span-2">
+            <h2>Pair play</h2>
+            <PairPlay teams={result.teams ?? []} />
+          </section>
+
+          {src ? (
+            <section className="panel">
+              <h2>Shot mix</h2>
+              <ShotChart players={result.players} />
+            </section>
+          ) : (
+            <section className="panel">
+              <h2>Rallies</h2>
+              <p className="muted">
+                {result.rallies.length} rallies, longest {Math.max(0, ...result.rallies.map((r) => r.shots))} shots.
+              </p>
+            </section>
+          )}
+
+          <section className="panel">
+            <h2>Highlights</h2>
+            <Highlights shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
+          </section>
+
+          <section className="panel span-2 coach">
+            <h2>
+              AI coach <span className="badge">Claude</span>
+            </h2>
+            <CoachPanel
+              result={result}
+              src={src}
+              names={match.names}
+              me={match.me}
+              report={match.report ?? null}
+              onReport={(report) => onChange({ ...match, report: report ?? undefined })}
+              onSeek={seek}
+            />
+          </section>
+        </div>
       </div>
-    </div>
+    </PlayersContext.Provider>
   );
 }
 

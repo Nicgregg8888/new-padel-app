@@ -1,7 +1,9 @@
 import { applyHomography, imageToCourtHomography, isOnCourt } from "./court";
-import { createPoseLandmarker, type PoseModel } from "./pose";
+import { createPoseLandmarkers, type PoseModel } from "./pose";
 import { LM, detectShots, groupRallies } from "./shots";
 import { computePlayerStats } from "./stats";
+import { computeTeamTactics } from "./tactics";
+import { computeTiles, poseQuality, tileToFrame } from "./tiles";
 import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
 import type { AnalysisResult, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
 
@@ -35,40 +37,169 @@ function feet(pose: Pose) {
   return { x: (l.x + r.x) / 2, y: Math.max(l.y, r.y) };
 }
 
+const hasFrameCallback = () =>
+  typeof HTMLVideoElement !== "undefined" && "requestVideoFrameCallback" in HTMLVideoElement.prototype;
+
+class StallError extends Error {}
+
+/**
+ * Fast path: play the video and grab samples as frames are presented,
+ * pausing while each one is analysed so nothing is skipped however slow the
+ * device is. Much faster than seeking, which re-decodes from the previous
+ * keyframe for every sample.
+ */
+function samplePlayback(
+  video: HTMLVideoElement,
+  sampleFps: number,
+  startAt: number,
+  onSample: (t: number) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const step = 1 / sampleFps;
+    let next = startAt;
+    let lastProgress = performance.now();
+    let done = false;
+    const finish = (err?: unknown) => {
+      if (done) return;
+      done = true;
+      clearInterval(watchdog);
+      video.pause();
+      video.removeEventListener("ended", onEnded);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onEnded = () => finish();
+    // Some browsers stop presenting frames for a video that isn't visible.
+    const watchdog = setInterval(() => {
+      if (signal?.aborted) finish(new DOMException("Analysis cancelled", "AbortError"));
+      else if (performance.now() - lastProgress > 5000) finish(new StallError("Playback stalled"));
+    }, 500);
+
+    const onFrame = (_now: number, meta: VideoFrameCallbackMetadata) => {
+      if (done) return;
+      if (signal?.aborted) {
+        finish(new DOMException("Analysis cancelled", "AbortError"));
+        return;
+      }
+      lastProgress = performance.now();
+      const t = meta.mediaTime;
+      if (t >= next - 1e-3) {
+        video.pause();
+        try {
+          onSample(t);
+        } catch (e) {
+          finish(e);
+          return;
+        }
+        lastProgress = performance.now();
+        next = t + step;
+        video.requestVideoFrameCallback(onFrame);
+        video.play().catch((e) => finish(new StallError(String(e))));
+        return;
+      }
+      video.requestVideoFrameCallback(onFrame);
+    };
+
+    video.addEventListener("ended", onEnded);
+    video.muted = true;
+    // Faster than real time: we only need a frame every `step` seconds.
+    video.playbackRate = 2;
+    video.requestVideoFrameCallback(onFrame);
+    video.play().catch((e) => finish(new StallError(String(e))));
+  });
+}
+
 export async function analyzeVideo(
   video: HTMLVideoElement,
   opts: AnalyzeOptions,
 ): Promise<AnalysisResult> {
-  const landmarker = await createPoseLandmarker(opts.model);
+  const aspect = video.videoWidth / video.videoHeight || 16 / 9;
+  const tiles = computeTiles(opts.corners, aspect);
+  // Two players per half of the court, per tile; overlaps are deduplicated below.
+  const landmarkers = await createPoseLandmarkers(opts.model, tiles.length, 2);
+  const MAX_TILE_SIDE = 640;
+  const canvases = tiles.map((t) => {
+    const w = t.w * video.videoWidth;
+    const h = t.h * video.videoHeight;
+    const scale = Math.min(1, MAX_TILE_SIDE / Math.max(w, h));
+    const c = document.createElement("canvas");
+    c.width = Math.max(32, Math.round(w * scale));
+    c.height = Math.max(32, Math.round(h * scale));
+    return { canvas: c, ctx: c.getContext("2d", { willReadFrequently: false })! };
+  });
   const H = imageToCourtHomography(opts.corners);
-  const tracker = new PlayerTracker();
   const duration = video.duration;
   const step = 1 / opts.sampleFps;
-  const frames: SampledFrame[] = [];
+  let tracker = new PlayerTracker();
+  let frames: SampledFrame[] = [];
+  let lastTs = -1;
+
+  const processFrame = (t: number) => {
+    // MediaPipe requires strictly increasing timestamps.
+    const ts = Math.max(lastTs + 1, Math.round(t * 1000));
+    lastTs = ts;
+    const candidates: (FramePose & { quality: number })[] = [];
+    tiles.forEach((tile, i) => {
+      const { canvas, ctx } = canvases[i];
+      ctx.drawImage(
+        video,
+        tile.x * video.videoWidth,
+        tile.y * video.videoHeight,
+        tile.w * video.videoWidth,
+        tile.h * video.videoHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      const result = landmarkers[i].detectForVideo(canvas, ts);
+      for (const lms of result.landmarks) {
+        const local: Pose = lms.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility }));
+        const landmarks = tileToFrame(local, tile);
+        const court = applyHomography(H, feet(landmarks));
+        if (isOnCourt(court)) candidates.push({ playerId: -1, landmarks, court, quality: poseQuality(local) });
+      }
+    });
+    // The same player can show up in two overlapping tiles: keep the better view.
+    candidates.sort((a, b) => b.quality - a.quality);
+    const kept: FramePose[] = dedupeDetections(candidates.map((c) => c.court)).map((k) => {
+      const { quality: _q, ...pose } = candidates[k];
+      return pose;
+    });
+    const ids = tracker.assign(t, kept.map((k) => k.court));
+    kept.forEach((k, j) => (k.playerId = ids[j]));
+    const frame = { t, poses: kept.filter((k) => k.playerId >= 0) };
+    frames.push(frame);
+    opts.onProgress?.(Math.min(1, (t + step) / duration), frame);
+  };
 
   try {
-    for (let i = 0; i * step < duration; i++) {
-      if (opts.signal?.aborted) throw new DOMException("Analysis cancelled", "AbortError");
-      const t = i * step;
-      await seek(video, t);
-      const result = landmarker.detectForVideo(video, Math.round(t * 1000));
-
-      const candidates: FramePose[] = result.landmarks
-        .map((lms) => {
-          const landmarks: Pose = lms.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility }));
-          return { playerId: -1, landmarks, court: applyHomography(H, feet(landmarks)) };
-        })
-        .filter((p) => isOnCourt(p.court));
-      const kept = dedupeDetections(candidates.map((c) => c.court)).map((k) => candidates[k]);
-      const ids = tracker.assign(t, kept.map((k) => k.court));
-      kept.forEach((k, j) => (k.playerId = ids[j]));
-
-      const frame = { t, poses: kept.filter((k) => k.playerId >= 0) };
-      frames.push(frame);
-      opts.onProgress?.(Math.min(1, (t + step) / duration), frame);
+    // The first inference is slow (model and GPU warm-up): do it on a paused
+    // frame so playback doesn't run ahead of us.
+    await seek(video, 0);
+    processFrame(0);
+    let fast = hasFrameCallback();
+    if (fast) {
+      try {
+        await samplePlayback(video, opts.sampleFps, step, processFrame, opts.signal);
+      } catch (e) {
+        if (!(e instanceof StallError)) throw e;
+        fast = false;
+      }
+    }
+    if (!fast) {
+      // Slow but dependable: seek to every sample.
+      tracker = new PlayerTracker();
+      frames = [];
+      for (let i = 0; i * step < duration; i++) {
+        if (opts.signal?.aborted) throw new DOMException("Analysis cancelled", "AbortError");
+        await seek(video, i * step);
+        processFrame(i * step);
+      }
     }
   } finally {
-    landmarker.close();
+    for (const l of landmarkers) l.close();
   }
 
   const mapping = canonicalPlayerOrder(frames);
@@ -78,15 +209,15 @@ export async function analyzeVideo(
       .filter((p) => p.playerId >= 0);
   }
 
-  const aspect = video.videoWidth / video.videoHeight || 16 / 9;
   const { shots, dominantHand } = detectShots(frames, { aspect, minSwingSpeed: opts.minSwingSpeed });
   return {
     duration,
-    sampleFps: opts.sampleFps,
+    sampleFps: frames.length / Math.max(duration, 1e-3),
     frames,
     shots,
     rallies: groupRallies(shots),
-    players: computePlayerStats(frames, shots, dominantHand, opts.sampleFps),
+    players: computePlayerStats(frames, shots, dominantHand),
+    teams: computeTeamTactics(frames),
     calibrated: opts.calibrated,
   };
 }

@@ -74,8 +74,8 @@ export class PlayerTracker {
   }
 }
 
-/** Remove near-duplicate detections of the same body (closer than `minDist` meters). */
-export function dedupeDetections(points: Point[], minDist = 0.5): number[] {
+/** Remove near-duplicate detections of the same body (closer than `minDist` meters), keeping the earliest. */
+export function dedupeDetections(points: Point[], minDist = 0.8): number[] {
   const keep: number[] = [];
   points.forEach((p, i) => {
     if (keep.every((k) => Math.hypot(points[k].x - p.x, points[k].y - p.y) >= minDist)) {

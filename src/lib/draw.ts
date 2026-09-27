@@ -10,7 +10,13 @@ const BONES: [number, number][] = [
   [27, 31], [28, 32],
 ];
 
-export function drawPoses(ctx: CanvasRenderingContext2D, poses: FramePose[], w: number, h: number) {
+export function drawPoses(
+  ctx: CanvasRenderingContext2D,
+  poses: FramePose[],
+  w: number,
+  h: number,
+  label: (id: number) => string = (id) => playerIdentity(id).label.split(" ")[0],
+) {
   const unit = Math.max(2, h / 300);
   for (const pose of poses) {
     const color = PLAYER_COLORS[pose.playerId] ?? "#e5e7eb";
@@ -34,7 +40,7 @@ export function drawPoses(ctx: CanvasRenderingContext2D, poses: FramePose[], w: 
     }
     if (pose.playerId >= 0) {
       const head = lm[0];
-      const text = playerIdentity(pose.playerId).label.split(" ")[0];
+      const text = label(pose.playerId);
       ctx.font = `600 ${unit * 7}px Inter, system-ui, sans-serif`;
       const tw = ctx.measureText(text).width;
       const x = head.x * w - tw / 2 - unit * 2;

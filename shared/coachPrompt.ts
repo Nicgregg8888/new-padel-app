@@ -10,6 +10,8 @@ How the statistics are produced, so you can weigh them properly:
 - Players are labelled A1/A2 (near team, left/right) and B1/B2 (far team). Team A is closest to the camera.
 - Shots are detected from wrist-speed peaks and classified by a heuristic (overhead = wrist above head; forehand/backhand from wrist side relative to the shoulder line; "volley" = hit from within 4 m of the net). Expect some misclassification, especially for the far team.
 - swingSpeed is in torso-lengths per second, useful only for comparing swings within this video.
+- "teams" describes pair positioning as shares of the time both partners were tracked: togetherNet / togetherMid / togetherBack (both in the same depth band: net < 4 m, mid 4-7.5 m, back beyond), staggered (one band apart), split (one at the net, one at the back). netTakings counts arrivals at the net together.
+- Players may have a "name"; use it. A player with "isMe": true is the person reading the report: address them as "you", put them first, and focus the advice on them and their partner.
 
 Coach the way a good padel coach would: prioritise positioning (getting to and holding the net together, moving as a pair, transition after lobs), shot selection (lob vs. chiquita vs. bandeja/víbora vs. smash), use of the glass, and consistency. Tie every point to evidence from the stats or the stills and cite timestamps where you can. Be specific and practical. Do not invent events you cannot see in the data. Put real doubts about data quality in "caveats" rather than hedging every sentence.
 
@@ -68,4 +70,20 @@ export function normalizeReport(raw: unknown): CoachReport {
       .map((m) => ({ t: m.t as number, title: m.title as string, observation: String(m.observation ?? "") })),
     caveats: strings(r.caveats),
   };
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Context for follow-up questions: the stats plus the report already written. */
+export function chatContext(summary: CoachRequest["summary"], report: CoachReport | null): string {
+  return `${COACH_INSTRUCTIONS}
+
+You are now answering the player's follow-up questions about this match. Answer conversationally in a few short paragraphs or a short list; plain text, no JSON. Cite timestamps (m:ss) when they help. If the data can't answer a question, say so and suggest what to film or track next time.
+
+Match statistics (JSON):
+${JSON.stringify(summary)}
+${report ? `\nThe coaching report you already gave (JSON):\n${JSON.stringify(report)}` : ""}`;
 }

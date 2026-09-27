@@ -4,6 +4,7 @@ import { PLAYER_COLORS } from "../analysis/tracker";
 import type { PlayerStats, Shot } from "../analysis/types";
 import { courtLines } from "../lib/draw";
 import { SHOT_COLORS, SHOT_LABELS, fmtTime } from "../lib/format";
+import { usePlayers } from "../lib/players";
 
 interface Props {
   players: PlayerStats[];
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function CourtMap({ players, shots, onSeek }: Props) {
+  const { name } = usePlayers();
   const [selected, setSelected] = useState<number | "all">("all");
   const [showShots, setShowShots] = useState(true);
 
@@ -51,11 +53,11 @@ export function CourtMap({ players, shots, onSeek }: Props) {
             style={{ "--chip": PLAYER_COLORS[p.playerId] } as React.CSSProperties}
             onClick={() => setSelected(p.playerId)}
           >
-            {p.label.split(" ")[0]}
+            {name(p.playerId)}
           </button>
         ))}
         <label className="toggle small">
-          <input type="checkbox" checked={showShots} onChange={(e) => setShowShots(e.target.checked)} />
+          <input id="court-shots-toggle" type="checkbox" checked={showShots} onChange={(e) => setShowShots(e.target.checked)} />
           Shots
         </label>
       </div>
@@ -87,7 +89,7 @@ export function CourtMap({ players, shots, onSeek }: Props) {
               className="shot-dot"
               onClick={() => onSeek(Math.max(0, s.t - 1))}
             >
-              <title>{`${fmtTime(s.t)} · ${SHOT_LABELS[s.type]}`}</title>
+              <title>{`${fmtTime(s.t)} · ${name(s.playerId)} · ${SHOT_LABELS[s.type]}`}</title>
             </circle>
           ))}
         <text x={5} y={-0.5} className="court-label">

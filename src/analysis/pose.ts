@@ -21,21 +21,34 @@ async function hostedModel(m: PoseModel): Promise<Uint8Array> {
   return bytes;
 }
 
-export async function createPoseLandmarker(model: PoseModel): Promise<PoseLandmarker> {
+/**
+ * Create `count` independent landmarkers (one per detection tile, so each
+ * keeps its own frame-to-frame tracking state).
+ */
+export async function createPoseLandmarkers(
+  model: PoseModel,
+  count: number,
+  numPoses: number,
+): Promise<PoseLandmarker[]> {
   const fileset = await FilesetResolver.forVisionTasks(WASM_URL);
   const source = HOSTED ? { modelAssetBuffer: await hostedModel(model) } : { modelAssetPath: modelUrl(model) };
   const options = (delegate: "GPU" | "CPU") => ({
     baseOptions: { ...source, delegate },
     runningMode: "VIDEO" as const,
-    // Four players on court, plus headroom for the odd spectator we filter out later.
-    numPoses: 6,
+    numPoses,
     minPoseDetectionConfidence: 0.4,
     minPosePresenceConfidence: 0.4,
     minTrackingConfidence: 0.4,
   });
-  try {
-    return await PoseLandmarker.createFromOptions(fileset, options("GPU"));
-  } catch {
-    return await PoseLandmarker.createFromOptions(fileset, options("CPU"));
-  }
+  const one = async () => {
+    try {
+      return await PoseLandmarker.createFromOptions(fileset, options("GPU"));
+    } catch {
+      return await PoseLandmarker.createFromOptions(fileset, options("CPU"));
+    }
+  };
+  const out: PoseLandmarker[] = [];
+  // Sequential: parallel GPU context creation is flaky on some browsers.
+  for (let i = 0; i < count; i++) out.push(await one());
+  return out;
 }

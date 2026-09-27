@@ -35,7 +35,6 @@ export function computePlayerStats(
   frames: SampledFrame[],
   shots: Shot[],
   dominantHand: Map<number, "left" | "right">,
-  sampleFps: number,
 ): PlayerStats[] {
   const byPlayer = new Map<number, { t: number; p: Point }[]>();
   for (const f of frames) {
@@ -53,9 +52,11 @@ export function computePlayerStats(
     let distance = 0;
     let movingTime = 0;
     let maxSpeed = 0;
+    let trackedSeconds = 0;
     for (let i = 1; i < track.length; i++) {
       const dt = track[i].t - track[i - 1].t;
       if (dt <= 0 || dt > 1) continue;
+      trackedSeconds += dt;
       const d = Math.hypot(track[i].p.x - track[i - 1].p.x, track[i].p.y - track[i - 1].p.y);
       const v = d / dt;
       if (v > MAX_REALISTIC_SPEED) continue;
@@ -87,7 +88,7 @@ export function computePlayerStats(
       distanceMeters: distance,
       avgSpeed: movingTime > 0 ? distance / movingTime : 0,
       maxSpeed,
-      trackedSeconds: track.length / sampleFps,
+      trackedSeconds,
       zoneShare: {
         net: zoneCounts.net / track.length,
         transition: zoneCounts.transition / track.length,
@@ -104,4 +105,18 @@ export function computePlayerStats(
     });
   }
   return stats;
+}
+
+/** The sampled frame closest to time `t` (frames are sorted by time, not necessarily evenly spaced). */
+export function frameAt<T extends { t: number }>(frames: T[], t: number): T | undefined {
+  if (!frames.length) return undefined;
+  let lo = 0;
+  let hi = frames.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].t < t) lo = mid + 1;
+    else hi = mid;
+  }
+  const prev = frames[lo - 1];
+  return prev && t - prev.t < frames[lo].t - t ? prev : frames[lo];
 }

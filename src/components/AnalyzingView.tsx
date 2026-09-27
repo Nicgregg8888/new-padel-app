@@ -25,9 +25,10 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
 
   useEffect(() => {
     const ctrl = new AbortController();
+    let video: HTMLVideoElement | null = null;
     (async () => {
       try {
-        const video = await loadHiddenVideo(src);
+        video = await loadHiddenVideo(src, { attach: true });
         const c = canvas.current!;
         c.width = Math.min(960, video.videoWidth);
         c.height = Math.round((c.width * video.videoHeight) / video.videoWidth);
@@ -38,12 +39,13 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
           signal: ctrl.signal,
           onProgress: (f, frame) => {
             setProgress(f);
-            setStatus(`Tracking players · ${fmtTime(frame.t)} / ${fmtTime(video.duration)}`);
+            setStatus(`Tracking players · ${fmtTime(frame.t)} / ${fmtTime(video!.duration)}`);
             setPlayers((n) => Math.max(n, frame.poses.length));
-            ctx.drawImage(video, 0, 0, c.width, c.height);
+            ctx.drawImage(video!, 0, 0, c.width, c.height);
             drawPoses(ctx, frame.poses, c.width, c.height);
           },
         });
+        video.remove();
         if (!ctrl.signal.aborted) onDoneRef.current(result);
       } catch (e) {
         if (ctrl.signal.aborted) return;
@@ -51,7 +53,11 @@ export function AnalyzingView({ src, settings, onDone, onCancel }: Props) {
         setError(e instanceof Error ? e.message : String(e));
       }
     })();
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+      video?.pause();
+      video?.remove();
+    };
   }, [src, settings]);
 
   const elapsed = (performance.now() - started.current) / 1000;

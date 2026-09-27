@@ -12,6 +12,8 @@ export const CoachRequestSchema = z.object({
       z.object({
         playerId: z.number(),
         label: z.string(),
+        name: z.string().max(60).optional(),
+        isMe: z.boolean().optional(),
         team: z.enum(["A", "B"]),
         distanceMeters: z.number(),
         avgSpeed: z.number(),
@@ -25,6 +27,24 @@ export const CoachRequestSchema = z.object({
         avgNetDistance: z.number(),
       }),
     ),
+    teams: z
+      .array(
+        z.object({
+          team: z.enum(["A", "B"]),
+          pairedSeconds: z.number(),
+          togetherNet: z.number(),
+          togetherMid: z.number(),
+          togetherBack: z.number(),
+          staggered: z.number(),
+          split: z.number(),
+          avgSpacing: z.number(),
+          avgDepthGap: z.number(),
+          avgLateralGap: z.number(),
+          netTakings: z.number(),
+        }),
+      )
+      .max(2)
+      .optional(),
     shots: z
       .array(
         z.object({
@@ -84,3 +104,14 @@ export const CoachReportSchema = z.object({
 });
 
 export type CoachReport = z.infer<typeof CoachReportSchema>;
+
+export const ChatRequestSchema = z.object({
+  summary: CoachRequestSchema.shape.summary,
+  report: CoachReportSchema.nullable(),
+  messages: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(4000) }))
+    .min(1)
+    .max(40),
+});
+
+export type ChatRequest = z.infer<typeof ChatRequestSchema>;

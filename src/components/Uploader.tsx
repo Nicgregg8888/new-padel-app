@@ -1,6 +1,15 @@
 import { useRef, useState } from "react";
+import { fmtTime } from "../lib/format";
+import type { MatchRecord } from "../lib/match";
 
-export function Uploader({ onFile }: { onFile: (file: File) => void }) {
+interface Props {
+  onFile: (file: File) => void;
+  recent: MatchRecord[];
+  onOpenRecent: (m: MatchRecord) => void;
+  onShowHistory: () => void;
+}
+
+export function Uploader({ onFile, recent, onOpenRecent, onShowHistory }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +38,32 @@ export function Uploader({ onFile }: { onFile: (file: File) => void }) {
         <ul className="features">
           <li><b>Pose tracking</b> for up to 4 players, in your browser</li>
           <li><b>Shot detection</b> — forehand, backhand, volleys, overheads</li>
-          <li><b>Court heatmaps</b>, distance covered and net control</li>
-          <li><b>AI coaching report</b> with drills and key moments</li>
+          <li><b>Court heatmaps</b>, distance covered and speed</li>
+          <li><b>Pair tactics</b>: net together, split, spacing</li>
+          <li><b>Highlights</b>: every smash or backhand, played back to back</li>
+          <li><b>AI coach</b>: a report with drills, then ask it anything</li>
+          <li><b>Progress</b> across matches, saved in your browser</li>
         </ul>
+        {recent.length > 0 && (
+          <div className="recent">
+            <h2>Recent matches</h2>
+            <ul>
+              {recent.slice(0, 3).map((m) => (
+                <li key={m.id}>
+                  <button className="link" onClick={() => onOpenRecent(m)}>
+                    {m.title}
+                  </button>
+                  <span className="muted small">
+                    {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(m.result.duration)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <button className="link" onClick={onShowHistory}>
+              See all and your progress →
+            </button>
+          </div>
+        )}
       </div>
       <div
         className={drag ? "dropzone drag" : "dropzone"}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCoachSummary, pickKeyShots, planKeyframes } from "../src/analysis/coachRequest";
-import { computePlayerStats } from "../src/analysis/stats";
+import { computePlayerStats, frameAt } from "../src/analysis/stats";
 import type { AnalysisResult, SampledFrame, Shot } from "../src/analysis/types";
 import { CoachRequestSchema } from "../shared/coach";
 import { normalizeReport } from "../shared/coachPrompt";
@@ -18,7 +18,7 @@ const shots: Shot[] = [
 ];
 
 describe("computePlayerStats", () => {
-  const [p] = computePlayerStats(frames, shots, new Map([[0, "right"]]), 10);
+  const [p] = computePlayerStats(frames, shots, new Map([[0, "right"]]));
 
   it("measures distance and speed in meters", () => {
     expect(p.distanceMeters).toBeGreaterThan(4.3);
@@ -48,7 +48,8 @@ describe("coach request", () => {
     frames,
     shots,
     rallies: [{ start: 0.5, end: 5, shots: 2 }],
-    players: computePlayerStats(frames, shots, new Map(), 10),
+    players: computePlayerStats(frames, shots, new Map()),
+    teams: [],
     calibrated: true,
   };
 
@@ -97,5 +98,20 @@ describe("normalizeReport", () => {
 
   it("rejects a reply without a headline", () => {
     expect(() => normalizeReport({ summary: "x" })).toThrow();
+  });
+});
+
+describe("frameAt", () => {
+  const fs = [0, 0.1, 0.25, 0.4].map((t) => ({ t }));
+  it("finds the nearest frame in unevenly spaced samples", () => {
+    expect(frameAt(fs, 0.22)?.t).toBe(0.25);
+    expect(frameAt(fs, 0.16)?.t).toBe(0.1);
+    expect(frameAt(fs, -1)?.t).toBe(0);
+    expect(frameAt(fs, 9)?.t).toBe(0.4);
+    expect(frameAt([], 1)).toBeUndefined();
+  });
+  it("reports tracked time from the samples", () => {
+    const [p] = computePlayerStats(frames, [], new Map());
+    expect(p.trackedSeconds).toBeCloseTo(5, 5);
   });
 });

@@ -71,6 +71,25 @@ export interface Rally {
   shots: number;
 }
 
+export interface TeamTactics {
+  team: "A" | "B";
+  /** Seconds in which both partners were tracked. */
+  pairedSeconds: number;
+  /** Shares of paired time (sum to 1 with staggered + split). */
+  togetherNet: number;
+  togetherMid: number;
+  togetherBack: number;
+  /** One partner a band ahead of the other (net+mid or mid+back). */
+  staggered: number;
+  /** One at the net, one at the back: the classic hole down the middle. */
+  split: number;
+  avgSpacing: number;
+  avgDepthGap: number;
+  avgLateralGap: number;
+  /** Times the pair arrived at the net together. */
+  netTakings: number;
+}
+
 export interface AnalysisResult {
   duration: number;
   sampleFps: number;
@@ -78,6 +97,7 @@ export interface AnalysisResult {
   shots: Shot[];
   rallies: Rally[];
   players: PlayerStats[];
+  teams: TeamTactics[];
   calibrated: boolean;
 }
 

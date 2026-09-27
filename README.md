@@ -5,8 +5,11 @@ Upload a padel match recording and get:
 - **Player tracking** — MediaPipe pose estimation follows all four players, frame by frame, entirely in the browser.
 - **Shot detection** — swings are found from wrist-speed peaks and classified as forehand, backhand, forehand/backhand volley or overhead.
 - **Court analytics** — after you click the four court corners, positions are projected onto a real 10 × 20 m court: heatmaps, distance covered, top speed, net / transition / back-court split.
-- **Rallies & timeline** — clickable shot markers and rally list that jump the video to the moment.
-- **AI coaching report** — Claude reviews the stats plus stills from key shots and writes strengths, things to work on, drills, team tactics and key moments.
+- **Pair tactics** — how often each pair is together at the net, together at the back, or split (one up, one back), plus partner spacing and net takings.
+- **Highlights** — filter shots by player and type ("all my backhand volleys") and play them back to back; longest rallies.
+- **Your players** — name everyone and mark "this is me"; names show on the video, stats and coaching.
+- **AI coach** — Claude reviews the stats plus stills from key shots and writes strengths, things to work on, drills, team tactics and key moments; then answers follow-up questions in a chat.
+- **Match history & progress** — every analysis is saved in the browser, with trends across matches (net time, pair split, shots and meters per minute).
 
 The video itself never leaves the device. Only when you ask for an AI report are a few JPEG stills and the numeric stats sent to the server.
 
@@ -54,12 +57,15 @@ The hosted build has no server: the pose models ship next to the page (as base64
 
 | Step | Where | Code |
 | --- | --- | --- |
-| Pose estimation (up to 6 bodies per frame, MediaPipe Pose Landmarker) | browser | `src/analysis/pose.ts`, `analyzeVideo.ts` |
+| Frame sampling: plays the video and grabs frames (pausing while each is analysed); falls back to seeking | browser | `src/analysis/analyzeVideo.ts` |
+| Pose estimation on zoomed, overlapping tiles of the court so far-side players are big enough to detect | browser | `src/analysis/tiles.ts`, `pose.ts` |
 | Image → court projection (4-point homography) | browser | `src/analysis/court.ts` |
 | Identity tracking, labelling A1/A2 (near team) and B1/B2 (far team) | browser | `src/analysis/tracker.ts` |
 | Swing detection + classification | browser | `src/analysis/shots.ts` |
 | Player stats, heatmaps | browser | `src/analysis/stats.ts` |
-| Coaching report (Claude, structured output) | server | `server/coach.ts`, `shared/coach.ts` |
+| Pair positioning | browser | `src/analysis/tactics.ts` |
+| Match history | browser (IndexedDB) | `src/lib/history.ts` |
+| Coaching report (Claude, structured output) and follow-up chat | server (`/api/coach`, `/api/chat`), or the viewer's Claude account when hosted | `server/coach.ts`, `shared/`, `src/lib/coachClient.ts` |
 
 Shot classification is heuristic: *overhead* when the racket wrist is above the head; *forehand/backhand* from which side of the shoulder line the racket wrist is on at peak speed (works whether the player faces the camera or not); *volley* when hit within 4 m of the net. Expect some mistakes, especially for the far team, which appears small in the frame. The swing-sensitivity setting trades missed shots against false positives.
 

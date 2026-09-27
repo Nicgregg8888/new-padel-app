@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { CoachReportSchema, type CoachReport, type CoachRequest } from "../shared/coach";
-import { COACH_INSTRUCTIONS, coachRequestText } from "../shared/coachPrompt";
+import type { ChatRequest } from "../shared/coach";
+import { COACH_INSTRUCTIONS, chatContext, coachRequestText } from "../shared/coachPrompt";
 
 const MODEL = "claude-opus-5";
 
@@ -53,4 +54,25 @@ export async function generateCoachReport(req: CoachRequest): Promise<CoachRepor
     throw new CoachError("The AI coach returned an incomplete report. Please try again.", 502);
   }
   return response.parsed_output;
+}
+
+export async function answerFollowUp(req: ChatRequest): Promise<string> {
+  const response = await getClient().beta.messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    thinking: { type: "adaptive" },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    system: chatContext(req.summary, req.report),
+    messages: req.messages,
+  });
+  if (response.stop_reason === "refusal") {
+    throw new CoachError("The AI coach declined to answer that.", 422);
+  }
+  const text = response.content
+    .map((b) => (b.type === "text" ? b.text : ""))
+    .join("")
+    .trim();
+  if (!text) throw new CoachError("The AI coach returned an empty answer. Please try again.", 502);
+  return text;
 }

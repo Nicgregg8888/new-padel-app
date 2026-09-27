@@ -9,9 +9,13 @@ interface SampleOptions {
   images?: Blob[];
   modelTier?: "default" | "complex" | "quick";
   signal?: AbortSignal;
+  cache?: boolean;
+  onText?: (update: { text: string; delta: string }) => void;
 }
+type SampleInput = string | { role: "user" | "assistant"; content: string }[];
 export interface Sample {
-  json<T = unknown>(input: string, options?: SampleOptions): Promise<T>;
+  (input: SampleInput, options?: SampleOptions): Promise<{ text: string; truncated: boolean }>;
+  json<T = unknown>(input: SampleInput, options?: SampleOptions): Promise<T>;
   limits(): Promise<{ images?: { maxCount: number } }>;
 }
 export interface Downloads {

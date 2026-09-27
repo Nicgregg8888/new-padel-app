@@ -1,21 +1,53 @@
 import { PLAYER_COLORS } from "../analysis/tracker";
 import type { PlayerStats } from "../analysis/types";
 import { pct } from "../lib/format";
+import { slotTag } from "../lib/match";
 
-export function PlayerCards({ players, calibrated }: { players: PlayerStats[]; calibrated: boolean }) {
+interface Props {
+  players: PlayerStats[];
+  calibrated: boolean;
+  names: Record<number, string>;
+  me: number | null;
+  onRename: (id: number, name: string) => void;
+  onSetMe: (id: number | null) => void;
+}
+
+export function PlayerCards({ players, calibrated, names, me, onRename, onSetMe }: Props) {
   if (!players.length) {
-    return <p className="muted">No players were tracked. Try calibrating the court or using the Heavy model.</p>;
+    return <p className="muted">No players were tracked. Try calibrating the court or using the Full model.</p>;
   }
   return (
     <div className="player-cards">
       {players.map((p) => (
-        <article key={p.playerId} className="player-card" style={{ borderTopColor: PLAYER_COLORS[p.playerId] }}>
+        <article
+          key={p.playerId}
+          className={me === p.playerId ? "player-card is-me" : "player-card"}
+          style={{ borderTopColor: PLAYER_COLORS[p.playerId] }}
+        >
           <header>
-            <h3 style={{ color: PLAYER_COLORS[p.playerId] }}>{p.label}</h3>
-            <span className="muted small">
-              Team {p.team}
-              {p.totalShots >= 5 && ` · likely ${p.dominantHand}-handed`}
-            </span>
+            <div className="name-field">
+              <input
+                id={`player-name-${p.playerId}`}
+                className="name-input"
+                style={{ color: PLAYER_COLORS[p.playerId] }}
+                value={names[p.playerId] ?? ""}
+                placeholder={slotTag(p.playerId)}
+                maxLength={40}
+                aria-label={`Name for ${slotTag(p.playerId)}`}
+                onChange={(e) => onRename(p.playerId, e.target.value)}
+              />
+              <span className="muted small">
+                {slotTag(p.playerId)} · Team {p.team}
+                {p.totalShots >= 5 && ` · likely ${p.dominantHand}-handed`}
+              </span>
+            </div>
+            <button
+              className={me === p.playerId ? "me-toggle on" : "me-toggle"}
+              aria-pressed={me === p.playerId}
+              onClick={() => onSetMe(me === p.playerId ? null : p.playerId)}
+            >
+              {me === p.playerId ? "★ This is me" : "☆ This is me"}
+            </button>
           </header>
           <dl className="stat-grid">
             <div>
