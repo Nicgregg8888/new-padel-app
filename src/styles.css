@@ -83,7 +83,10 @@ label.toggle { flex-direction: row; align-items: center; gap: 8px; }
 .calib-overlay.picking { cursor: crosshair; }
 .court-line { stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; fill: none; }
 .net-line { stroke: #fff; stroke-width: 3px; vector-effect: non-scaling-stroke; stroke-dasharray: 6 4; }
-.corner-dot { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 0.75rem; display: grid; place-items: center; pointer-events: none; box-shadow: 0 0 0 3px rgba(0,0,0,.5); }
+.corner-dot { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 0.75rem; display: grid; place-items: center; cursor: grab; touch-action: none; user-select: none; box-shadow: 0 0 0 3px rgba(0,0,0,.5); }
+.corner-dot::after { content: ""; position: absolute; inset: -10px; border-radius: 50%; }
+.corner-dot:active { cursor: grabbing; }
+.ok-text { color: var(--good); }
 .corner-tag { display: inline-block; padding: 1px 8px; margin: 2px 3px; border-radius: 999px; background: var(--panel-2); font-size: 0.8rem; }
 .corner-tag.next { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .scrub { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-variant-numeric: tabular-nums; font-size: 0.85rem; color: var(--muted); }
@@ -229,6 +232,9 @@ button.small, .ghost.small, .primary.small { padding: 6px 12px; font-size: 0.85r
 .shot-item .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shot-item .power { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 
+.tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; background: var(--line); color: var(--text); vertical-align: 1px; }
+.tag.ok { background: rgba(52,211,153,.18); color: var(--good); }
+
 /* coach chat */
 .coach-body { display: grid; gap: 24px; }
 .chat { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 12px; }
@@ -263,6 +269,11 @@ button.small, .ghost.small, .primary.small { padding: 6px 12px; font-size: 0.85r
 .match-item:hover { background: var(--panel-2); }
 .match-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .confirm { font-size: 0.85rem; white-space: nowrap; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(4,6,10,.75); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; width: min(520px, 100%); max-height: 100%; overflow: auto; display: grid; gap: 12px; }
+.modal h2 { margin: 0; }
+.card-preview { width: 100%; border-radius: 10px; display: block; }
+.demo-btn { margin-top: 22px; }
 .recent { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 16px; }
 .recent h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
 .recent ul { list-style: none; padding: 0; margin: 0 0 6px; display: grid; gap: 2px; }

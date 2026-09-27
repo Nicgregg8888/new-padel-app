@@ -27,7 +27,8 @@ async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBReq
 }
 
 export function stripFrames(m: MatchRecord): MatchRecord {
-  return { ...m, result: { ...m.result, frames: [] } };
+  const ball = m.result.ball ? { track: [], events: m.result.ball.events } : undefined;
+  return { ...m, result: { ...m.result, frames: [], ball } };
 }
 
 export async function saveMatch(m: MatchRecord): Promise<boolean> {

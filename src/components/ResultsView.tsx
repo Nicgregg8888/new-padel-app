@@ -9,6 +9,7 @@ import { Highlights } from "./Highlights";
 import { MatchPlayer, type Playlist } from "./MatchPlayer";
 import { PairPlay } from "./PairPlay";
 import { PlayerCards } from "./PlayerCards";
+import { ShareCard } from "./ShareCard";
 import { ShotChart } from "./ShotChart";
 
 interface Props {
@@ -23,6 +24,8 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
   const { result } = match;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const closeShare = useCallback(() => setSharing(false), []);
   const endPlaylist = useCallback(() => setPlaylist(null), []);
 
   const seek = (t: number) => {
@@ -82,10 +85,15 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
           <div>
             <h1 className="match-title">{match.title}</h1>
             <p className="muted small">
-              Analysed {new Date(match.createdAt).toLocaleString()} · saved in this browser
+              {match.demo
+                ? "Simulated match to show what PadelVision finds. Nothing here is saved."
+                : `Analysed ${new Date(match.createdAt).toLocaleString()} · saved in this browser`}
             </p>
           </div>
           <div className="kpi-actions">
+            <button className="primary" onClick={() => setSharing(true)}>
+              Match card
+            </button>
             {onReanalyze && (
               <button className="ghost" onClick={onReanalyze}>
                 Re-analyze
@@ -104,6 +112,12 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
           <Kpi label="Shots detected" value={String(result.shots.length)} />
           <Kpi label="Rallies" value={String(result.rallies.length)} />
           <Kpi label="Avg. rally" value={avgRally ? `${avgRally.toFixed(1)} shots` : "—"} />
+          {result.ball && (
+            <>
+              <Kpi label="Shots seen by ball tracking" value={String(result.shots.filter((s) => s.confirmed).length)} />
+              <Kpi label="Lobs" value={String(result.shots.filter((s) => s.lob).length)} />
+            </>
+          )}
         </section>
         {!result.calibrated && (
           <p className="notice">
@@ -111,7 +125,7 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
             corners for accurate numbers.
           </p>
         )}
-        {!src && (
+        {!src && !match.demo && (
           <p className="notice">
             Viewing a saved match. The video isn't stored, so playback and highlights clips are off; stats, the
             court map and the coach all still work.
@@ -195,6 +209,7 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
           </section>
         </div>
       </div>
+      {sharing && <ShareCard match={match} downloads={downloads} onClose={closeShare} />}
     </PlayersContext.Provider>
   );
 }

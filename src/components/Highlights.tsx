@@ -22,11 +22,15 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
   const [who, setWho] = useState<number | "all">(me ?? "all");
   const [types, setTypes] = useState<Set<ShotType>>(new Set());
   const [sort, setSort] = useState<Sort>("time");
+  const [lobsOnly, setLobsOnly] = useState(false);
+  const hasBall = shots.some((s) => s.confirmed);
 
   const filtered = useMemo(() => {
-    const list = shots.filter((s) => (who === "all" || s.playerId === who) && (!types.size || types.has(s.type)));
+    const list = shots.filter(
+      (s) => (who === "all" || s.playerId === who) && (!types.size || types.has(s.type)) && (!lobsOnly || s.lob),
+    );
     return sort === "power" ? [...list].sort((a, b) => b.swingSpeed - a.swingSpeed) : list;
-  }, [shots, who, types, sort]);
+  }, [shots, who, types, sort, lobsOnly]);
 
   const topRallies = useMemo(() => [...rallies].sort((a, b) => b.shots - a.shots).slice(0, 5), [rallies]);
 
@@ -40,6 +44,7 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
   const filterLabel = [
     who === "all" ? "Everyone" : name(who),
     types.size ? [...types].map((t) => SHOT_LABELS[t]).join(", ") : "all shots",
+    ...(lobsOnly ? ["lobs"] : []),
   ].join(" · ");
 
   const playShots = (list: Shot[], title: string) =>
@@ -82,6 +87,11 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
             {SHOT_LABELS[t]}
           </button>
         ))}
+        {hasBall && (
+          <button className={lobsOnly ? "chip on" : "chip"} aria-pressed={lobsOnly} onClick={() => setLobsOnly(!lobsOnly)}>
+            Lobs
+          </button>
+        )}
       </div>
       <div className="row between highlights-actions">
         <label className="inline-select">
@@ -111,6 +121,12 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
                 <i style={{ background: SHOT_COLORS[s.type] }} aria-hidden />
                 <span className="what">
                   <b style={{ color: PLAYER_COLORS[s.playerId] }}>{name(s.playerId)}</b> {SHOT_LABELS[s.type]}
+                  {s.lob && <span className="tag">lob</span>}
+                  {s.confirmed && (
+                    <span className="tag ok" title="Ball tracking saw this hit">
+                      ✓ ball
+                    </span>
+                  )}
                 </span>
                 <span className="muted small">{s.zone}</span>
                 <span className="power" title="Swing speed, torso-lengths per second">

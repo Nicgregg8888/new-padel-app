@@ -1,6 +1,6 @@
 import { COURT_LENGTH, COURT_WIDTH, NET_Y, SERVICE_LINE_OFFSET, applyHomography, type Homography } from "../analysis/court";
 import { PLAYER_COLORS, playerIdentity } from "../analysis/tracker";
-import type { FramePose, Point } from "../analysis/types";
+import type { BallObs, FramePose, Point } from "../analysis/types";
 
 /** Body connections worth drawing (MediaPipe indices); face detail is skipped. */
 const BONES: [number, number][] = [
@@ -72,4 +72,27 @@ export function courtLines(): [Point, Point][] {
 
 export function projectedCourtLines(h: Homography) {
   return courtLines().map(([a, b]) => [applyHomography(h, a), applyHomography(h, b)] as const);
+}
+
+/** The ball's last half-second as a fading trail. */
+export function drawBallTrail(ctx: CanvasRenderingContext2D, track: BallObs[], t: number, w: number, h: number) {
+  const span = 0.5;
+  // Binary search for the first observation inside the window.
+  let lo = 0;
+  let hi = track.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (track[mid].t < t - span) lo = mid + 1;
+    else hi = mid;
+  }
+  const r = Math.max(3, h / 180);
+  for (let i = lo; i < track.length && track[i].t <= t; i++) {
+    const age = (t - track[i].t) / span;
+    ctx.globalAlpha = Math.max(0.1, 1 - age);
+    ctx.fillStyle = "#e9ff4d";
+    ctx.beginPath();
+    ctx.arc(track[i].x * w, track[i].y * h, r * (1 - age * 0.5), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }

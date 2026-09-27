@@ -9,6 +9,7 @@ export const fmtTime = (s: number) => {
 export const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 export const SHOT_LABELS: Record<ShotType, string> = {
+  serve: "Serve",
   forehand: "Forehand",
   backhand: "Backhand",
   "forehand-volley": "FH volley",
@@ -17,6 +18,7 @@ export const SHOT_LABELS: Record<ShotType, string> = {
 };
 
 export const SHOT_COLORS: Record<ShotType, string> = {
+  serve: "#e879f9",
   forehand: "#38bdf8",
   backhand: "#818cf8",
   "forehand-volley": "#34d399",

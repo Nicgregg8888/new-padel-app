@@ -26,6 +26,7 @@ export interface SampledFrame {
 }
 
 export type ShotType =
+  | "serve"
   | "forehand"
   | "backhand"
   | "forehand-volley"
@@ -41,6 +42,20 @@ export interface Shot {
   /** Where on court the player hit from, meters. */
   court: Point;
   zone: CourtZone;
+  /** Ball tracking saw the ball change direction at this player's racket. */
+  confirmed?: boolean;
+  /** Ball tracking saw the ball climb high after this shot. */
+  lob?: boolean;
+}
+
+/** Ball position in one video frame, normalized image coordinates. */
+export interface BallObs extends Point {
+  t: number;
+}
+
+export interface BallEvent extends BallObs {
+  kind: "hit" | "bounce" | "wall";
+  playerId?: number;
 }
 
 export type CourtZone = "net" | "transition" | "baseline";
@@ -99,6 +114,8 @@ export interface AnalysisResult {
   players: PlayerStats[];
   teams: TeamTactics[];
   calibrated: boolean;
+  /** Present when ball tracking ran. */
+  ball?: { track: BallObs[]; events: BallEvent[] };
 }
 
 /** Four image points (normalized) for court corners: far-left, far-right, near-right, near-left. */

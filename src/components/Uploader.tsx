@@ -7,9 +7,10 @@ interface Props {
   recent: MatchRecord[];
   onOpenRecent: (m: MatchRecord) => void;
   onShowHistory: () => void;
+  onDemo: () => void;
 }
 
-export function Uploader({ onFile, recent, onOpenRecent, onShowHistory }: Props) {
+export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,9 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory }: Props)
           <li><b>AI coach</b>: a report with drills, then ask it anything</li>
           <li><b>Progress</b> across matches, saved in your browser</li>
         </ul>
+        <button className="ghost demo-btn" onClick={onDemo}>
+          No video handy? Explore a demo match →
+        </button>
         {recent.length > 0 && (
           <div className="recent">
             <h2>Recent matches</h2>

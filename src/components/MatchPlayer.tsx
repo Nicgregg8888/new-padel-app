@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { frameAt } from "../analysis/stats";
 import { PLAYER_COLORS } from "../analysis/tracker";
 import type { AnalysisResult } from "../analysis/types";
-import { drawPoses } from "../lib/draw";
+import { drawBallTrail, drawPoses } from "../lib/draw";
 import { SHOT_COLORS, SHOT_LABELS, fmtTime } from "../lib/format";
 import { usePlayers } from "../lib/players";
 
@@ -29,6 +29,8 @@ export function MatchPlayer({ src, result, videoRef, playlist, onPlaylistEnd }: 
   const { name } = usePlayers();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [overlay, setOverlay] = useState(true);
+  const [showBall, setShowBall] = useState(true);
+  const ballTrack = result.ball?.track ?? [];
   const [time, setTime] = useState(0);
   const [clipIndex, setClipIndex] = useState(0);
   const clipRef = useRef(0);
@@ -64,6 +66,7 @@ export function MatchPlayer({ src, result, videoRef, playlist, onPlaylistEnd }: 
           const frame = frameAt(result.frames, v.currentTime);
           if (frame && Math.abs(frame.t - v.currentTime) < 0.5) drawPoses(ctx, frame.poses, w, h, nameRef.current);
         }
+        if (showBall && ballTrack.length) drawBallTrail(ctx, ballTrack, v.currentTime, w, h);
         setTime((prev) => (Math.abs(prev - v.currentTime) > 0.05 ? v.currentTime : prev));
 
         // Advance through the highlight playlist.
@@ -84,7 +87,7 @@ export function MatchPlayer({ src, result, videoRef, playlist, onPlaylistEnd }: 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [overlay, result, videoRef, playlist, onPlaylistEnd]);
+  }, [overlay, showBall, ballTrack, result, videoRef, playlist, onPlaylistEnd]);
 
   const seek = (t: number) => {
     if (videoRef.current) videoRef.current.currentTime = t;
@@ -102,6 +105,7 @@ export function MatchPlayer({ src, result, videoRef, playlist, onPlaylistEnd }: 
           <div className="shot-flash" style={{ borderColor: SHOT_COLORS[recent.type] }}>
             <span style={{ color: PLAYER_COLORS[recent.playerId] }}>●</span> {name(recent.playerId)} ·{" "}
             {SHOT_LABELS[recent.type]}
+            {recent.lob && " · lob"}
           </div>
         )}
       </div>
@@ -156,6 +160,12 @@ export function MatchPlayer({ src, result, videoRef, playlist, onPlaylistEnd }: 
           <input id="overlay-toggle" type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
           Show skeleton overlay
         </label>
+        {ballTrack.length > 0 && (
+          <label className="toggle">
+            <input id="ball-toggle" type="checkbox" checked={showBall} onChange={(e) => setShowBall(e.target.checked)} />
+            Show ball
+          </label>
+        )}
         <div className="legend">
           {Object.entries(SHOT_LABELS).map(([k, label]) => (
             <span key={k}>

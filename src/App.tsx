@@ -6,7 +6,8 @@ import { ResultsView } from "./components/ResultsView";
 import { SetupView, type AnalysisSettings } from "./components/SetupView";
 import { Uploader } from "./components/Uploader";
 import { listMatches, loadPlayerPrefs, saveMatch, savePlayerPrefs } from "./lib/history";
-import { newMatch, type MatchRecord } from "./lib/match";
+import { demoResult } from "./analysis/demo";
+import { demoMatch, newMatch, type MatchRecord } from "./lib/match";
 
 type Stage =
   | { kind: "upload" }
@@ -51,6 +52,7 @@ export default function App() {
 
   const updateMatch = (match: MatchRecord) => {
     setStage((s) => (s.kind === "results" ? { ...s, match } : s));
+    if (match.demo) return;
     saveMatch(match);
     savePlayerPrefs({ names: match.names, me: match.me });
   };
@@ -85,6 +87,7 @@ export default function App() {
             recent={recent}
             onOpenRecent={(match) => setStage({ kind: "results", match, withVideo: false })}
             onShowHistory={() => setStage({ kind: "history" })}
+            onDemo={() => setStage({ kind: "results", match: demoMatch(demoResult()), withVideo: false })}
             onFile={(file) => {
               setVideo({ url: URL.createObjectURL(file), name: file.name });
               setStage({ kind: "setup" });

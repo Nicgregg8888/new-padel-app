@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { DEFAULT_CORNERS, courtToImageHomography } from "../analysis/court";
+import { detectCourt, framePixels } from "../analysis/courtDetect";
 import type { PoseModel } from "../analysis/pose";
 import type { CourtCorners, Point } from "../analysis/types";
 import { projectedCourtLines } from "../lib/draw";
@@ -12,6 +13,7 @@ export interface AnalysisSettings {
   sampleFps: number;
   model: PoseModel;
   minSwingSpeed: number;
+  trackBall: boolean;
 }
 
 const CORNER_NAMES = ["far-left", "far-right", "near-right", "near-left"];
@@ -34,6 +36,34 @@ export function SetupView({ src, onStart, onBack }: Props) {
   const [model, setModel] = useState<PoseModel>("full");
   const [fps, setFps] = useState(10);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("medium");
+  const [trackBall, setTrackBall] = useState(true);
+  const [detect, setDetect] = useState<"pending" | "found" | "missed" | "manual">("pending");
+  const stage = useRef<HTMLDivElement>(null);
+  const dragging = useRef<number | null>(null);
+
+  const autoDetect = () => {
+    const v = video.current;
+    if (!v || v.readyState < 2) return;
+    try {
+      const found = detectCourt(framePixels(v));
+      if (found) {
+        setPoints(found);
+        setDetect("found");
+      } else {
+        setDetect("missed");
+      }
+    } catch {
+      setDetect("missed");
+    }
+  };
+
+  const toStage = (e: React.PointerEvent) => {
+    const r = stage.current!.getBoundingClientRect();
+    return {
+      x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
+      y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+    };
+  };
 
   const lines = useMemo(() => {
     if (points.length !== 4) return [];
@@ -57,6 +87,7 @@ export function SetupView({ src, onStart, onBack }: Props) {
       sampleFps: fps,
       model,
       minSwingSpeed: SENSITIVITY_TO_SPEED[sensitivity],
+      trackBall,
     });
 
   const estMinutes = (duration * fps) / (model === "heavy" ? 300 : model === "full" ? 600 : 1200);
@@ -65,16 +96,24 @@ export function SetupView({ src, onStart, onBack }: Props) {
     <section className="setup">
       <div className="panel">
         <h2>Mark the court</h2>
-        <p className="muted">
-          Click the four corners of the court <b>on the floor</b>, in this order:{" "}
-          {CORNER_NAMES.map((n, i) => (
-            <span key={n} className={points.length === i ? "corner-tag next" : "corner-tag"}>
-              {i + 1}. {n}
-            </span>
-          ))}
-          . This lets us measure real distances in meters.
-        </p>
-        <div className="calib-stage">
+        {detect === "found" && points.length === 4 ? (
+          <p className="muted">
+            <b className="ok-text">Court found automatically.</b> Check the yellow lines sit on the court lines;
+            drag any numbered corner to adjust.
+          </p>
+        ) : (
+          <p className="muted">
+            {detect === "missed" && <b>Couldn't find the court automatically. </b>}
+            Click the four corners of the court <b>on the floor</b>, in this order:{" "}
+            {CORNER_NAMES.map((n, i) => (
+              <span key={n} className={points.length === i ? "corner-tag next" : "corner-tag"}>
+                {i + 1}. {n}
+              </span>
+            ))}
+            . This lets us measure real distances in meters.
+          </p>
+        )}
+        <div className="calib-stage" ref={stage}>
           <video
             ref={video}
             src={src}
@@ -86,6 +125,9 @@ export function SetupView({ src, onStart, onBack }: Props) {
               e.currentTarget.currentTime = Math.min(1, e.currentTarget.duration / 2);
             }}
             onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+            onSeeked={() => {
+              if (detect === "pending") autoDetect();
+            }}
           />
           <svg
             className={points.length < 4 ? "calib-overlay picking" : "calib-overlay"}
@@ -101,7 +143,35 @@ export function SetupView({ src, onStart, onBack }: Props) {
             )}
           </svg>
           {points.map((p, i) => (
-            <div key={i} className="corner-dot" style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}>
+            <div
+              key={i}
+              className="corner-dot"
+              style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+              role="slider"
+              aria-label={`Corner ${i + 1}: ${CORNER_NAMES[i]}`}
+              aria-valuetext={`${Math.round(p.x * 100)}% across, ${Math.round(p.y * 100)}% down`}
+              tabIndex={0}
+              onPointerDown={(e) => {
+                dragging.current = i;
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerMove={(e) => {
+                if (dragging.current !== i) return;
+                const next = [...points];
+                next[i] = toStage(e);
+                setPoints(next);
+              }}
+              onPointerUp={() => (dragging.current = null)}
+              onKeyDown={(e) => {
+                const d = e.shiftKey ? 0.01 : 0.002;
+                const delta = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
+                if (!delta) return;
+                e.preventDefault();
+                const next = [...points];
+                next[i] = { x: p.x + delta[0], y: p.y + delta[1] };
+                setPoints(next);
+              }}
+            >
               {i + 1}
             </div>
           ))}
@@ -122,10 +192,20 @@ export function SetupView({ src, onStart, onBack }: Props) {
           <span>{fmtTime(duration)}</span>
         </div>
         <div className="row">
+          <button className="ghost" onClick={autoDetect}>
+            Find court on this frame
+          </button>
           <button className="ghost" onClick={() => setPoints(points.slice(0, -1))} disabled={!points.length}>
             Undo point
           </button>
-          <button className="ghost" onClick={() => setPoints([])} disabled={!points.length}>
+          <button
+            className="ghost"
+            onClick={() => {
+              setPoints([]);
+              setDetect("manual");
+            }}
+            disabled={!points.length}
+          >
             Clear
           </button>
         </div>
@@ -157,6 +237,11 @@ export function SetupView({ src, onStart, onBack }: Props) {
             <option value="high">High — catch soft touches</option>
           </select>
         </label>
+        <label className="toggle">
+          <input id="track-ball" type="checkbox" checked={trackBall} onChange={(e) => setTrackBall(e.target.checked)} />
+          Track the ball (beta)
+        </label>
+        <p className="muted small">Ball tracking reads every frame, so analysis takes about as long as the video.</p>
         <p className="muted small">
           Estimated time: ~{Math.max(1, Math.round(estMinutes))} min for a {fmtTime(duration)} clip
           (depends on your device).

@@ -1,7 +1,8 @@
-import { applyHomography, imageToCourtHomography, isOnCourt } from "./court";
+import { BallDetector, BallTracker, annotateShots, ballEvents, cleanTrack, torsoBoxes } from "./ball";
+import { NET_Y, COURT_WIDTH, applyHomography, courtToImageHomography, imageToCourtHomography, isOnCourt } from "./court";
 import { createPoseLandmarkers, type PoseModel } from "./pose";
-import { LM, detectShots, groupRallies } from "./shots";
-import { computePlayerStats } from "./stats";
+import { LM, detectShots, groupRallies, markServes } from "./shots";
+import { computePlayerStats, frameAt } from "./stats";
 import { computeTeamTactics } from "./tactics";
 import { computeTiles, poseQuality, tileToFrame } from "./tiles";
 import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
@@ -13,6 +14,8 @@ export interface AnalyzeOptions {
   sampleFps: number;
   model: PoseModel;
   minSwingSpeed: number;
+  /** Also look for the ball on every presented frame (beta). */
+  trackBall?: boolean;
   onProgress?: (fraction: number, frame: SampledFrame) => void;
   signal?: AbortSignal;
 }
@@ -50,9 +53,11 @@ class StallError extends Error {}
  */
 function samplePlayback(
   video: HTMLVideoElement,
+  playbackRate: number,
   sampleFps: number,
   startAt: number,
   onSample: (t: number) => void,
+  onPresented: (t: number) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -84,6 +89,12 @@ function samplePlayback(
       }
       lastProgress = performance.now();
       const t = meta.mediaTime;
+      try {
+        onPresented(t);
+      } catch (e) {
+        finish(e);
+        return;
+      }
       if (t >= next - 1e-3) {
         video.pause();
         try {
@@ -103,8 +114,7 @@ function samplePlayback(
 
     video.addEventListener("ended", onEnded);
     video.muted = true;
-    // Faster than real time: we only need a frame every `step` seconds.
-    video.playbackRate = 2;
+    video.playbackRate = playbackRate;
     video.requestVideoFrameCallback(onFrame);
     video.play().catch((e) => finish(new StallError(String(e))));
   });
@@ -129,6 +139,23 @@ export async function analyzeVideo(
     return { canvas: c, ctx: c.getContext("2d", { willReadFrequently: false })! };
   });
   const H = imageToCourtHomography(opts.corners);
+
+  // Ball tracking works on a small copy of every presented frame.
+  const ballCanvas = document.createElement("canvas");
+  ballCanvas.width = 384;
+  ballCanvas.height = Math.round((384 * video.videoHeight) / Math.max(1, video.videoWidth));
+  const ballCtx = ballCanvas.getContext("2d", { willReadFrequently: true })!;
+  const ballDetector = new BallDetector();
+  let ballTracker = new BallTracker();
+  const findBall = (t: number) => {
+    if (!opts.trackBall) return;
+    ballCtx.drawImage(video, 0, 0, ballCanvas.width, ballCanvas.height);
+    const img = ballCtx.getImageData(0, 0, ballCanvas.width, ballCanvas.height);
+    const last = frames[frames.length - 1];
+    const cands = ballDetector.detect(img, last ? torsoBoxes(last.poses) : []);
+    ballTracker.push(t, cands);
+  };
+
   const duration = video.duration;
   const step = 1 / opts.sampleFps;
   let tracker = new PlayerTracker();
@@ -178,11 +205,14 @@ export async function analyzeVideo(
     // The first inference is slow (model and GPU warm-up): do it on a paused
     // frame so playback doesn't run ahead of us.
     await seek(video, 0);
+    findBall(0);
     processFrame(0);
     let fast = hasFrameCallback();
     if (fast) {
       try {
-        await samplePlayback(video, opts.sampleFps, step, processFrame, opts.signal);
+        // Faster than real time when only poses are needed; real time when
+        // following the ball, which needs every frame.
+        await samplePlayback(video, opts.trackBall ? 1 : 2, opts.sampleFps, step, processFrame, findBall, opts.signal);
       } catch (e) {
         if (!(e instanceof StallError)) throw e;
         fast = false;
@@ -191,10 +221,12 @@ export async function analyzeVideo(
     if (!fast) {
       // Slow but dependable: seek to every sample.
       tracker = new PlayerTracker();
+      ballTracker = new BallTracker();
       frames = [];
       for (let i = 0; i * step < duration; i++) {
         if (opts.signal?.aborted) throw new DOMException("Analysis cancelled", "AbortError");
         await seek(video, i * step);
+        findBall(i * step);
         processFrame(i * step);
       }
     }
@@ -209,16 +241,39 @@ export async function analyzeVideo(
       .filter((p) => p.playerId >= 0);
   }
 
-  const { shots, dominantHand } = detectShots(frames, { aspect, minSwingSpeed: opts.minSwingSpeed });
+  const detected = detectShots(frames, { aspect, minSwingSpeed: opts.minSwingSpeed });
+  const { dominantHand } = detected;
+  let shots = detected.shots;
+
+  let ball: AnalysisResult["ball"];
+  if (opts.trackBall) {
+    const track = cleanTrack(ballTracker.result());
+    const wristsAt = (t: number) =>
+      (frameAt(frames, t)?.poses ?? []).flatMap((p) =>
+        [LM.leftWrist, LM.rightWrist]
+          .filter((i) => p.landmarks[i].visibility > 0.3)
+          .map((i) => ({ playerId: p.playerId, p: p.landmarks[i] })),
+      );
+    const events = ballEvents(track, wristsAt);
+    const toImage = courtToImageHomography(opts.corners);
+    const farY = (applyHomography(toImage, { x: 0, y: 0 }).y + applyHomography(toImage, { x: COURT_WIDTH, y: 0 }).y) / 2;
+    const netY = (applyHomography(toImage, { x: 0, y: NET_Y }).y + applyHomography(toImage, { x: COURT_WIDTH, y: NET_Y }).y) / 2;
+    shots = annotateShots(shots, track, events, farY, Math.max(netY - farY, 0.02));
+    ball = { track, events };
+  }
+  const rallies = groupRallies(shots);
+  shots = markServes(shots, rallies);
+
   return {
     duration,
     sampleFps: frames.length / Math.max(duration, 1e-3),
     frames,
     shots,
-    rallies: groupRallies(shots),
+    rallies,
     players: computePlayerStats(frames, shots, dominantHand),
     teams: computeTeamTactics(frames),
     calibrated: opts.calibrated,
+    ball,
   };
 }
 

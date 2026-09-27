@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-const shotType = z.enum(["forehand", "backhand", "forehand-volley", "backhand-volley", "overhead"]);
+const shotType = z.enum(["serve", "forehand", "backhand", "forehand-volley", "backhand-volley", "overhead"]);
 
 export const CoachRequestSchema = z.object({
   summary: z.object({
@@ -53,6 +53,8 @@ export const CoachRequestSchema = z.object({
           type: shotType,
           zone: z.enum(["net", "transition", "baseline"]),
           swingSpeed: z.number(),
+          confirmed: z.boolean().optional(),
+          lob: z.boolean().optional(),
         }),
       )
       .max(2000),

@@ -85,6 +85,8 @@ export function buildCoachSummary(
       type: s.type,
       zone: s.zone,
       swingSpeed: round(s.swingSpeed, 1),
+      ...(s.confirmed ? { confirmed: true } : {}),
+      ...(s.lob ? { lob: true } : {}),
     })),
   };
 }

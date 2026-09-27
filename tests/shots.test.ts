@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectShots, findPeaks, groupRallies } from "../src/analysis/shots";
+import { detectShots, findPeaks, groupRallies, markServes } from "../src/analysis/shots";
 import type { SampledFrame, Shot } from "../src/analysis/types";
 import { framePose } from "./fixtures";
 
@@ -69,5 +69,21 @@ describe("groupRallies", () => {
     expect(rallies).toHaveLength(2);
     expect(rallies[0].shots).toBe(3);
     expect(rallies[1].shots).toBe(2);
+  });
+});
+
+describe("markServes", () => {
+  const shot = (t: number, zone: Shot["zone"], type: Shot["type"] = "forehand"): Shot => ({
+    t,
+    playerId: 0,
+    type,
+    swingSpeed: 10,
+    court: { x: 5, y: 18 },
+    zone,
+  });
+  it("labels the first back-court shot of each rally as the serve", () => {
+    const shots = [shot(1, "baseline"), shot(2, "net"), shot(10, "net"), shot(11, "baseline")];
+    const out = markServes(shots, groupRallies(shots));
+    expect(out.map((s) => s.type)).toEqual(["serve", "forehand", "forehand", "forehand"]);
   });
 });

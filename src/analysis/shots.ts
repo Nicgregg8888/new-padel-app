@@ -221,3 +221,11 @@ export function groupRallies(shots: Shot[], maxGap = 4): Rally[] {
   flush();
   return rallies;
 }
+
+/** The first shot of a rally, hit from the back of the court, is the serve. */
+export function markServes(shots: Shot[], rallies: Rally[]): Shot[] {
+  const firsts = new Set(
+    rallies.map((r) => shots.find((s) => s.t >= r.start && s.t <= r.end)).filter((s): s is Shot => !!s),
+  );
+  return shots.map((s) => (firsts.has(s) && s.zone === "baseline" && s.type !== "overhead" ? { ...s, type: "serve" } : s));
+}

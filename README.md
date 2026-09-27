@@ -5,6 +5,11 @@ Upload a padel match recording and get:
 - **Player tracking** — MediaPipe pose estimation follows all four players, frame by frame, entirely in the browser.
 - **Shot detection** — swings are found from wrist-speed peaks and classified as forehand, backhand, forehand/backhand volley or overhead.
 - **Court analytics** — after you click the four court corners, positions are projected onto a real 10 × 20 m court: heatmaps, distance covered, top speed, net / transition / back-court split.
+- **Automatic court detection** — finds the court surface and suggests the four corners; drag to adjust.
+- **Ball tracking (beta)** — follows the ball frame by frame, draws its path, confirms real shots and spots lobs.
+- **Serves** — the first back-court shot of each rally.
+- **Demo match** — explore every screen with simulated data before uploading a video.
+- **Match card** — a shareable image of your stats, pair play and heatmap.
 - **Pair tactics** — how often each pair is together at the net, together at the back, or split (one up, one back), plus partner spacing and net takings.
 - **Highlights** — filter shots by player and type ("all my backhand volleys") and play them back to back; longest rallies.
 - **Your players** — name everyone and mark "this is me"; names show on the video, stats and coaching.
@@ -58,6 +63,8 @@ The hosted build has no server: the pose models ship next to the page (as base64
 | Step | Where | Code |
 | --- | --- | --- |
 | Frame sampling: plays the video and grabs frames (pausing while each is analysed); falls back to seeking | browser | `src/analysis/analyzeVideo.ts` |
+| Court detection: grow the carpet colour from the lower middle, bridge lines, fit the largest quadrilateral | browser | `src/analysis/courtDetect.ts` |
+| Ball: moving + ball-coloured blobs, several candidate paths, keep the ones that travel; hits, bounces, lobs | browser | `src/analysis/ball.ts` |
 | Pose estimation on zoomed, overlapping tiles of the court so far-side players are big enough to detect | browser | `src/analysis/tiles.ts`, `pose.ts` |
 | Image → court projection (4-point homography) | browser | `src/analysis/court.ts` |
 | Identity tracking, labelling A1/A2 (near team) and B1/B2 (far team) | browser | `src/analysis/tracker.ts` |

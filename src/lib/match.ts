@@ -13,6 +13,8 @@ export interface MatchRecord {
   /** Which player the user is, if they said. */
   me: number | null;
   report?: CoachReport;
+  /** Simulated sample data, never saved. */
+  demo?: boolean;
 }
 
 export function newMatch(title: string, result: AnalysisResult, prev?: Pick<MatchRecord, "names" | "me">): MatchRecord {
@@ -32,4 +34,16 @@ export const slotTag = (id: number) => playerIdentity(id).label.split(" ")[0];
 /** The player's name if set, otherwise their slot tag. */
 export function playerName(m: Pick<MatchRecord, "names">, id: number): string {
   return m.names[id]?.trim() || slotTag(id);
+}
+
+export function demoMatch(result: AnalysisResult): MatchRecord {
+  return {
+    id: "demo",
+    title: "Demo match (sample data)",
+    createdAt: Date.now(),
+    result,
+    names: { 0: "You", 1: "Partner", 2: "Rival 1", 3: "Rival 2" },
+    me: 0,
+    demo: true,
+  };
 }

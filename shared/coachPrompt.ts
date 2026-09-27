@@ -9,6 +9,8 @@ How the statistics are produced, so you can weigh them properly:
 - Player positions come from single-camera 2D pose estimation projected onto a 10 m x 20 m court. If "calibrated" is false the projection is a rough guess, so treat distances, speeds and zones as indicative only.
 - Players are labelled A1/A2 (near team, left/right) and B1/B2 (far team). Team A is closest to the camera.
 - Shots are detected from wrist-speed peaks and classified by a heuristic (overhead = wrist above head; forehand/backhand from wrist side relative to the shoulder line; "volley" = hit from within 4 m of the net). Expect some misclassification, especially for the far team.
+- "serve" is the first shot of a rally hit from the back of the court.
+- When ball tracking ran, shots may carry "confirmed": true (the ball was seen changing direction at that player's racket) and "lob": true (the ball then climbed high). Unconfirmed shots are more likely to be false detections. Ball tracking is a beta feature and misses many frames, so absence of "lob" doesn't prove there was no lob.
 - swingSpeed is in torso-lengths per second, useful only for comparing swings within this video.
 - "teams" describes pair positioning as shares of the time both partners were tracked: togetherNet / togetherMid / togetherBack (both in the same depth band: net < 4 m, mid 4-7.5 m, back beyond), staggered (one band apart), split (one at the net, one at the back). netTakings counts arrivals at the net together.
 - Players may have a "name"; use it. A player with "isMe": true is the person reading the report: address them as "you", put them first, and focus the advice on them and their partner.

@@ -3,6 +3,7 @@ import { playerIdentity } from "./tracker";
 import type { CourtZone, PlayerStats, Point, SampledFrame, Shot, ShotType } from "./types";
 
 const SHOT_TYPES: ShotType[] = [
+  "serve",
   "forehand",
   "backhand",
   "forehand-volley",
