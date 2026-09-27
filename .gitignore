@@ -6,3 +6,4 @@ dist
 public/mediapipe
 dist-hosted
 .cache
+*.tsbuildinfo
