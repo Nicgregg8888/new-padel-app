@@ -3,7 +3,7 @@ import { NET_Y, COURT_WIDTH, applyHomography, courtToImageHomography, imageToCou
 import { createPoseLandmarkers, type PoseModel } from "./pose";
 import { LM, detectShots, groupRallies, markServes } from "./shots";
 import { computePlayerStats, frameAt } from "./stats";
-import { computeTeamTactics } from "./tactics";
+import { computeTeamTactics, rallyPatterns } from "./tactics";
 import { computeTiles, poseQuality, tileToFrame } from "./tiles";
 import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
 import type { AnalysisResult, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
@@ -14,6 +14,8 @@ export interface AnalyzeOptions {
   sampleFps: number;
   model: PoseModel;
   minSwingSpeed: number;
+  /** Analyse only this part of the video (seconds). */
+  range?: { start: number; end: number };
   /** Also look for the ball on every presented frame (beta). */
   trackBall?: boolean;
   onProgress?: (fraction: number, frame: SampledFrame) => void;
@@ -56,6 +58,7 @@ function samplePlayback(
   playbackRate: number,
   sampleFps: number,
   startAt: number,
+  endAt: number,
   onSample: (t: number) => void,
   onPresented: (t: number) => void,
   signal?: AbortSignal,
@@ -89,6 +92,10 @@ function samplePlayback(
       }
       lastProgress = performance.now();
       const t = meta.mediaTime;
+      if (t > endAt) {
+        finish();
+        return;
+      }
       try {
         onPresented(t);
       } catch (e) {
@@ -157,6 +164,8 @@ export async function analyzeVideo(
   };
 
   const duration = video.duration;
+  const start = Math.max(0, Math.min(opts.range?.start ?? 0, duration));
+  const end = Math.max(start + 0.5, Math.min(opts.range?.end ?? duration, duration));
   const step = 1 / opts.sampleFps;
   let tracker = new PlayerTracker();
   let frames: SampledFrame[] = [];
@@ -198,21 +207,21 @@ export async function analyzeVideo(
     kept.forEach((k, j) => (k.playerId = ids[j]));
     const frame = { t, poses: kept.filter((k) => k.playerId >= 0) };
     frames.push(frame);
-    opts.onProgress?.(Math.min(1, (t + step) / duration), frame);
+    opts.onProgress?.(Math.min(1, Math.max(0, (t + step - start) / (end - start))), frame);
   };
 
   try {
     // The first inference is slow (model and GPU warm-up): do it on a paused
     // frame so playback doesn't run ahead of us.
-    await seek(video, 0);
-    findBall(0);
-    processFrame(0);
+    await seek(video, start);
+    findBall(start);
+    processFrame(start);
     let fast = hasFrameCallback();
     if (fast) {
       try {
         // Faster than real time when only poses are needed; real time when
         // following the ball, which needs every frame.
-        await samplePlayback(video, opts.trackBall ? 1 : 2, opts.sampleFps, step, processFrame, findBall, opts.signal);
+        await samplePlayback(video, opts.trackBall ? 1 : 2, opts.sampleFps, start + step, end, processFrame, findBall, opts.signal);
       } catch (e) {
         if (!(e instanceof StallError)) throw e;
         fast = false;
@@ -223,11 +232,11 @@ export async function analyzeVideo(
       tracker = new PlayerTracker();
       ballTracker = new BallTracker();
       frames = [];
-      for (let i = 0; i * step < duration; i++) {
+      for (let t = start; t < end; t += step) {
         if (opts.signal?.aborted) throw new DOMException("Analysis cancelled", "AbortError");
-        await seek(video, i * step);
-        findBall(i * step);
-        processFrame(i * step);
+        await seek(video, t);
+        findBall(t);
+        processFrame(t);
       }
     }
   } finally {
@@ -261,12 +270,12 @@ export async function analyzeVideo(
     shots = annotateShots(shots, track, events, farY, Math.max(netY - farY, 0.02));
     ball = { track, events };
   }
-  const rallies = groupRallies(shots);
+  const rallies = rallyPatterns(frames, groupRallies(shots));
   shots = markServes(shots, rallies);
 
   return {
     duration,
-    sampleFps: frames.length / Math.max(duration, 1e-3),
+    sampleFps: frames.length / Math.max(end - start, 1e-3),
     frames,
     shots,
     rallies,
@@ -274,6 +283,7 @@ export async function analyzeVideo(
     teams: computeTeamTactics(frames),
     calibrated: opts.calibrated,
     ball,
+    ...(start > 0.05 || end < duration - 0.05 ? { range: { start, end } } : {}),
   };
 }
 

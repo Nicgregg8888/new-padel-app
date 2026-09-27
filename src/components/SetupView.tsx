@@ -14,6 +14,7 @@ export interface AnalysisSettings {
   model: PoseModel;
   minSwingSpeed: number;
   trackBall: boolean;
+  range?: { start: number; end: number };
 }
 
 const CORNER_NAMES = ["far-left", "far-right", "near-right", "near-left"];
@@ -37,6 +38,7 @@ export function SetupView({ src, onStart, onBack }: Props) {
   const [fps, setFps] = useState(10);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("medium");
   const [trackBall, setTrackBall] = useState(true);
+  const [range, setRange] = useState<{ start: number; end: number } | null>(null);
   const [detect, setDetect] = useState<"pending" | "found" | "missed" | "manual">("pending");
   const stage = useRef<HTMLDivElement>(null);
   const dragging = useRef<number | null>(null);
@@ -88,9 +90,11 @@ export function SetupView({ src, onStart, onBack }: Props) {
       model,
       minSwingSpeed: SENSITIVITY_TO_SPEED[sensitivity],
       trackBall,
+      ...(range ? { range } : {}),
     });
 
-  const estMinutes = (duration * fps) / (model === "heavy" ? 300 : model === "full" ? 600 : 1200);
+  const span = range ? range.end - range.start : duration;
+  const estMinutes = (span * fps) / (model === "heavy" ? 300 : model === "full" ? 600 : 1200);
 
   return (
     <section className="setup">
@@ -191,6 +195,37 @@ export function SetupView({ src, onStart, onBack }: Props) {
           />
           <span>{fmtTime(duration)}</span>
         </div>
+        <div className="segment" role="group" aria-label="Part of the video to analyse">
+          <span className="small">
+            {range ? (
+              <>
+                Analysing <b>{fmtTime(range.start)}–{fmtTime(range.end)}</b> ({fmtTime(range.end - range.start)})
+              </>
+            ) : (
+              <>
+                Analysing the <b>whole video</b> ({fmtTime(duration)}). Long match? Pick one set:
+              </>
+            )}
+          </span>
+          <button
+            className="ghost small"
+            onClick={() => setRange({ start: time, end: Math.max(time + 1, range?.end ?? duration) })}
+          >
+            Start here ({fmtTime(time)})
+          </button>
+          <button
+            className="ghost small"
+            disabled={time <= (range?.start ?? 0) + 1}
+            onClick={() => setRange({ start: range?.start ?? 0, end: time })}
+          >
+            End here
+          </button>
+          {range && (
+            <button className="link small" onClick={() => setRange(null)}>
+              Whole video
+            </button>
+          )}
+        </div>
         <div className="row">
           <button className="ghost" onClick={autoDetect}>
             Find court on this frame
@@ -243,7 +278,8 @@ export function SetupView({ src, onStart, onBack }: Props) {
         </label>
         <p className="muted small">Ball tracking reads every frame, so analysis takes about as long as the video.</p>
         <p className="muted small">
-          Estimated time: ~{Math.max(1, Math.round(estMinutes))} min for a {fmtTime(duration)} clip
+          Estimated time: ~{Math.max(1, Math.round(trackBall ? Math.max(estMinutes, span / 60) : estMinutes))} min for{" "}
+          {fmtTime(span)} of video
           (depends on your device).
         </p>
         <button className="primary" disabled={points.length !== 4} onClick={() => start(true)}>

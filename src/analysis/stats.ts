@@ -121,3 +121,18 @@ export function frameAt<T extends { t: number }>(frames: T[], t: number): T | un
   const prev = frames[lo - 1];
   return prev && t - prev.t < frames[lo].t - t ? prev : frames[lo];
 }
+
+/** Refresh shot counts after the user corrects shots (movement stats stay as they were). */
+export function recountShots(players: PlayerStats[], shots: Shot[]): PlayerStats[] {
+  return players.map((p) => {
+    const mine = shots.filter((s) => s.playerId === p.playerId);
+    const counts = emptyShotCounts();
+    for (const s of mine) counts[s.type]++;
+    return {
+      ...p,
+      shots: counts,
+      totalShots: mine.length,
+      avgSwingSpeed: mine.length ? mine.reduce((a, s) => a + s.swingSpeed, 0) / mine.length : 0,
+    };
+  });
+}

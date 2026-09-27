@@ -10,6 +10,10 @@ Upload a padel match recording and get:
 - **Serves** — the first back-court shot of each rally.
 - **Demo match** — explore every screen with simulated data before uploading a video.
 - **Match card** — a shareable image of your stats, pair play and heatmap.
+- **Point review** — tag who won each rally and how (winner, forced or unforced error); see win rate by positioning ("together at the net: 67% · split: 17%") and each player's winners and errors.
+- **Correct the AI** — relabel or delete a shot, or swap two players the tracker mixed up; stats update straight away.
+- **Reliability report** — how much of the time each player and the ball were tracked, with tips for filming the next match.
+- **Analyse part of a video** — pick a start and end, e.g. one set of a long match.
 - **Pair tactics** — how often each pair is together at the net, together at the back, or split (one up, one back), plus partner spacing and net takings.
 - **Highlights** — filter shots by player and type ("all my backhand volleys") and play them back to back; longest rallies.
 - **Your players** — name everyone and mark "this is me"; names show on the video, stats and coaching.

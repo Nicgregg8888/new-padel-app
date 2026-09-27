@@ -5,9 +5,14 @@ import { playerName, type MatchRecord } from "../lib/match";
 import { PlayersContext } from "../lib/players";
 import { CoachPanel } from "./CoachPanel";
 import { CourtMap } from "./CourtMap";
+import { editShot, swapPlayers } from "../analysis/corrections";
+import { analysedSeconds } from "../analysis/reliability";
+import { ReliabilityPanel } from "./ReliabilityPanel";
 import { Highlights } from "./Highlights";
+import { SwapPlayers } from "./SwapPlayers";
 import { MatchPlayer, type Playlist } from "./MatchPlayer";
 import { PairPlay } from "./PairPlay";
+import { PointsPanel } from "./PointsPanel";
 import { PlayerCards } from "./PlayerCards";
 import { ShareCard } from "./ShareCard";
 import { ShotChart } from "./ShotChart";
@@ -107,7 +112,10 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
           </div>
         </div>
         <section className="kpis">
-          <Kpi label="Duration" value={fmtTime(result.duration)} />
+          <Kpi
+            label={result.range ? `Analysed (${fmtTime(result.range.start)}–${fmtTime(result.range.end)})` : "Duration"}
+            value={fmtTime(analysedSeconds(result))}
+          />
           <Kpi label="Players tracked" value={String(result.players.length)} />
           <Kpi label="Shots detected" value={String(result.shots.length)} />
           <Kpi label="Rallies" value={String(result.rallies.length)} />
@@ -125,6 +133,7 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
             corners for accurate numbers.
           </p>
         )}
+        {!match.demo && <ReliabilityPanel result={result} />}
         {!src && !match.demo && (
           <p className="notice">
             Viewing a saved match. The video isn't stored, so playback and highlights clips are off; stats, the
@@ -167,12 +176,20 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
               onRename={(id, name) => onChange({ ...match, names: { ...match.names, [id]: name } })}
               onSetMe={(id) => onChange({ ...match, me: id })}
             />
+            {src && result.frames.length > 0 && result.players.length > 1 && (
+              <SwapPlayers
+                players={result.players.map((p) => p.playerId)}
+                currentTime={() => videoRef.current?.currentTime ?? 0}
+                onSwap={(a, b, from) => onChange({ ...match, result: swapPlayers(result, a, b, from) })}
+              />
+            )}
           </section>
 
           <section className="panel span-2">
             <h2>Pair play</h2>
             <PairPlay teams={result.teams ?? []} />
           </section>
+
 
           {src ? (
             <section className="panel">
@@ -188,9 +205,22 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
             </section>
           )}
 
+          <section className="panel span-3">
+            <h2>Points</h2>
+            <PointsPanel
+              rallies={result.rallies}
+              shots={result.shots}
+              tags={match.points ?? []}
+              onChange={(points) => onChange({ ...match, points })}
+              onPlay={src ? play : null}
+            />
+          </section>
+
           <section className="panel">
             <h2>Highlights</h2>
-            <Highlights shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
+            <Highlights
+              onEditShot={(shot, patch) => onChange({ ...match, result: editShot(result, shot, patch) })}
+              shots={result.shots} rallies={result.rallies} players={result.players} onPlay={src ? play : null} />
           </section>
 
           <section className="panel span-2 coach">
@@ -202,6 +232,7 @@ export function ResultsView({ match, src, onChange, onReanalyze }: Props) {
               src={src}
               names={match.names}
               me={match.me}
+              points={match.points ?? []}
               report={match.report ?? null}
               onReport={(report) => onChange({ ...match, report: report ?? undefined })}
               onSeek={seek}

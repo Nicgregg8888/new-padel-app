@@ -1,7 +1,9 @@
 import type { CoachRequest } from "../../shared/coach";
 import { SHOT_LABELS } from "../lib/format";
 import { playerIdentity } from "./tracker";
-import type { AnalysisResult, Shot } from "./types";
+import { pointStats } from "./points";
+import { analysedSeconds } from "./reliability";
+import type { AnalysisResult, PointTag, Shot } from "./types";
 
 const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
 
@@ -42,11 +44,11 @@ export function planKeyframes(result: AnalysisResult, n = 6): KeyframePlan[] {
 
 export function buildCoachSummary(
   result: AnalysisResult,
-  people: { names?: Record<number, string>; me?: number | null } = {},
+  people: { names?: Record<number, string>; me?: number | null; points?: PointTag[] } = {},
 ): CoachRequest["summary"] {
   const { rallies } = result;
   return {
-    durationSeconds: round(result.duration, 1),
+    durationSeconds: round(analysedSeconds(result), 1),
     calibrated: result.calibrated,
     rallies: rallies.length,
     avgRallyShots: rallies.length ? round(rallies.reduce((a, r) => a + r.shots, 0) / rallies.length, 1) : 0,
@@ -66,6 +68,7 @@ export function buildCoachSummary(
       avgSwingSpeed: round(p.avgSwingSpeed, 1),
       avgNetDistance: round(p.avgNetDistance, 1),
     })),
+    ...(people.points?.length ? { points: pointStats(result.rallies, people.points) } : {}),
     teams: (result.teams ?? []).map((t) => ({
       team: t.team,
       pairedSeconds: round(t.pairedSeconds, 0),
@@ -87,6 +90,7 @@ export function buildCoachSummary(
       swingSpeed: round(s.swingSpeed, 1),
       ...(s.confirmed ? { confirmed: true } : {}),
       ...(s.lob ? { lob: true } : {}),
+      ...(s.edited ? { edited: true } : {}),
     })),
   };
 }

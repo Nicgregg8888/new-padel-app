@@ -1,6 +1,7 @@
 import type { CoachReport } from "../../shared/coach";
 import { playerIdentity } from "../analysis/tracker";
-import type { AnalysisResult } from "../analysis/types";
+import { demoPointTags } from "../analysis/demo";
+import type { AnalysisResult, PointTag } from "../analysis/types";
 
 /** Everything we keep about one analysed match. */
 export interface MatchRecord {
@@ -13,6 +14,8 @@ export interface MatchRecord {
   /** Which player the user is, if they said. */
   me: number | null;
   report?: CoachReport;
+  /** The user's calls on how each rally ended. */
+  points?: PointTag[];
   /** Simulated sample data, never saved. */
   demo?: boolean;
 }
@@ -44,6 +47,7 @@ export function demoMatch(result: AnalysisResult): MatchRecord {
     result,
     names: { 0: "You", 1: "Partner", 2: "Rival 1", 3: "Rival 2" },
     me: 0,
+    points: demoPointTags(result),
     demo: true,
   };
 }

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { analysedSeconds } from "../analysis/reliability";
 import { fmtTime } from "../lib/format";
 import type { MatchRecord } from "../lib/match";
 
@@ -58,7 +59,7 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
                     {m.title}
                   </button>
                   <span className="muted small">
-                    {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(m.result.duration)}
+                    {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(analysedSeconds(m.result))}
                   </span>
                 </li>
               ))}

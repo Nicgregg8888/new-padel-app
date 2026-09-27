@@ -46,6 +46,8 @@ export interface Shot {
   confirmed?: boolean;
   /** Ball tracking saw the ball climb high after this shot. */
   lob?: boolean;
+  /** The user corrected this shot by hand. */
+  edited?: boolean;
 }
 
 /** Ball position in one video frame, normalized image coordinates. */
@@ -80,10 +82,26 @@ export interface PlayerStats {
   avgNetDistance: number;
 }
 
+/** How a pair is positioned: both in one depth band, one band apart, or one up and one back. */
+export type PairPattern = "net" | "mid" | "back" | "staggered" | "split";
+
 export interface Rally {
   start: number;
   end: number;
   shots: number;
+  /** Each pair's dominant positioning during the rally (when both partners were tracked). */
+  patterns?: Partial<Record<"A" | "B", PairPattern>>;
+}
+
+export type PointEnding = "winner" | "forced" | "unforced";
+
+/** The user's call on how a rally ended. */
+export interface PointTag {
+  rally: number;
+  winner: "A" | "B";
+  ending: PointEnding;
+  /** Who hit the winner or made the error. */
+  by?: number;
 }
 
 export interface TeamTactics {
@@ -106,7 +124,10 @@ export interface TeamTactics {
 }
 
 export interface AnalysisResult {
+  /** Length of the whole video (the timeline). */
   duration: number;
+  /** The part of the video that was analysed, when not all of it. */
+  range?: { start: number; end: number };
   sampleFps: number;
   frames: SampledFrame[];
   shots: Shot[];

@@ -27,6 +27,17 @@ export const CoachRequestSchema = z.object({
         avgNetDistance: z.number(),
       }),
     ),
+    points: z
+      .object({
+        tagged: z.number(),
+        score: z.object({ A: z.number(), B: z.number() }),
+        byPattern: z.record(
+          z.enum(["A", "B"]),
+          z.partialRecord(z.enum(["net", "mid", "back", "staggered", "split"]), z.object({ won: z.number(), played: z.number() })),
+        ),
+        perPlayer: z.record(z.string(), z.record(z.enum(["winner", "forced", "unforced"]), z.number())),
+      })
+      .optional(),
     teams: z
       .array(
         z.object({
@@ -55,6 +66,7 @@ export const CoachRequestSchema = z.object({
           swingSpeed: z.number(),
           confirmed: z.boolean().optional(),
           lob: z.boolean().optional(),
+          edited: z.boolean().optional(),
         }),
       )
       .max(2000),

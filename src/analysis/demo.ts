@@ -1,8 +1,9 @@
 import { COURT_LENGTH, COURT_WIDTH, NET_Y, zoneOf } from "./court";
 import { groupRallies, markServes } from "./shots";
 import { computePlayerStats } from "./stats";
-import { computeTeamTactics } from "./tactics";
-import type { AnalysisResult, Point, SampledFrame, Shot, ShotType } from "./types";
+import { lastHitter, teamOf } from "./points";
+import { computeTeamTactics, rallyPatterns } from "./tactics";
+import type { AnalysisResult, PairPattern, Point, PointTag, SampledFrame, Shot, ShotType } from "./types";
 
 /** Small deterministic PRNG so the demo looks the same every time. */
 function mulberry32(seed: number) {
@@ -23,7 +24,7 @@ const FPS = 10;
  * user's pair and has a realistic habit to fix: the partner often stays back
  * while the user goes to the net, leaving the pair split.
  */
-export function demoResult(minutes = 4, seed = 7): AnalysisResult {
+export function demoResult(minutes = 6, seed = 7): AnalysisResult {
   const rnd = mulberry32(seed);
   const duration = minutes * 60;
   // Near team: y > NET_Y. Depth = meters from the net.
@@ -113,7 +114,7 @@ export function demoResult(minutes = 4, seed = 7): AnalysisResult {
     t += 1 / FPS;
   }
 
-  const rallies = groupRallies(shots);
+  const rallies = rallyPatterns(frames, groupRallies(shots));
   const finalShots = markServes(shots, rallies);
   const hands = new Map<number, "left" | "right">([
     [0, "right"],
@@ -132,4 +133,26 @@ export function demoResult(minutes = 4, seed = 7): AnalysisResult {
     calibrated: true,
     ball: { track: [], events: [] },
   };
+}
+
+/** How strongly each positioning tends to win the point in the demo. */
+const PATTERN_EDGE: Record<PairPattern, number> = { net: 0.7, mid: 0.5, staggered: 0.42, back: 0.4, split: 0.3 };
+
+/**
+ * Plausible point outcomes for the demo, tagged as a user would: pairs at the
+ * net win more, split pairs lose more.
+ */
+export function demoPointTags(result: AnalysisResult, seed = 11): PointTag[] {
+  const rnd = mulberry32(seed);
+  return result.rallies.map((r, i) => {
+    const a = PATTERN_EDGE[r.patterns?.A ?? "mid"];
+    const b = PATTERN_EDGE[r.patterns?.B ?? "mid"];
+    const winner = rnd() < a / (a + b) ? "A" : "B";
+    const roll = rnd();
+    const ending = roll < 0.4 ? "winner" : roll < 0.7 ? "forced" : "unforced";
+    const last = lastHitter(r, result.shots);
+    const side = ending === "winner" ? winner : winner === "A" ? "B" : "A";
+    const by = last !== undefined && teamOf(last) === side ? last : side === "A" ? Math.floor(rnd() * 2) : 2 + Math.floor(rnd() * 2);
+    return { rally: i, winner, ending, by };
+  });
 }

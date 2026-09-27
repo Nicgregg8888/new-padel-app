@@ -1,5 +1,5 @@
 import { netDistance } from "./court";
-import type { SampledFrame, TeamTactics } from "./types";
+import type { PairPattern, Point, Rally, SampledFrame, TeamTactics } from "./types";
 
 /** Depth bands used for pair positioning, meters from the net. */
 const NET_BAND = 4;
@@ -7,6 +7,39 @@ const BACK_BAND = 7.5;
 
 type Depth = "net" | "mid" | "back";
 const depthOf = (d: number): Depth => (d < NET_BAND ? "net" : d < BACK_BAND ? "mid" : "back");
+
+/** How a pair is positioned at one instant. */
+export function pairPattern(a: Point, b: Point): PairPattern {
+  const za = depthOf(netDistance(a));
+  const zb = depthOf(netDistance(b));
+  if (za === zb) return za;
+  if ((za === "net" && zb === "back") || (za === "back" && zb === "net")) return "split";
+  return "staggered";
+}
+
+/** The pattern each pair spent the most time in during every rally. */
+export function rallyPatterns(frames: SampledFrame[], rallies: Rally[]): Rally[] {
+  return rallies.map((r) => {
+    const patterns: Rally["patterns"] = {};
+    for (const [team, a, b] of [
+      ["A", 0, 1],
+      ["B", 2, 3],
+    ] as const) {
+      const counts = new Map<PairPattern, number>();
+      for (const f of frames) {
+        if (f.t < r.start || f.t > r.end) continue;
+        const pa = f.poses.find((p) => p.playerId === a);
+        const pb = f.poses.find((p) => p.playerId === b);
+        if (!pa || !pb) continue;
+        const k = pairPattern(pa.court, pb.court);
+        counts.set(k, (counts.get(k) ?? 0) + 1);
+      }
+      const top = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
+      if (top) patterns[team] = top[0];
+    }
+    return { ...r, patterns };
+  });
+}
 
 /**
  * How each pair positions itself: padel is won by moving as a unit, taking

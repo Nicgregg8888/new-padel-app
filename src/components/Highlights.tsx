@@ -3,9 +3,11 @@ import { PLAYER_COLORS } from "../analysis/tracker";
 import type { PlayerStats, Rally, Shot, ShotType } from "../analysis/types";
 import { SHOT_COLORS, SHOT_LABELS, fmtTime } from "../lib/format";
 import { usePlayers } from "../lib/players";
+import type { ShotPatch } from "../analysis/corrections";
 import type { Playlist } from "./MatchPlayer";
 
 interface Props {
+  onEditShot: (shot: Shot, patch: ShotPatch | null) => void;
   shots: Shot[];
   rallies: Rally[];
   players: PlayerStats[];
@@ -17,12 +19,14 @@ type Sort = "time" | "power";
 const SHOT_TYPES = Object.keys(SHOT_LABELS) as ShotType[];
 const LIST_LIMIT = 40;
 
-export function Highlights({ shots, rallies, players, onPlay }: Props) {
+export function Highlights({ shots, rallies, players, onPlay, onEditShot }: Props) {
   const { name, me } = usePlayers();
   const [who, setWho] = useState<number | "all">(me ?? "all");
   const [types, setTypes] = useState<Set<ShotType>>(new Set());
   const [sort, setSort] = useState<Sort>("time");
   const [lobsOnly, setLobsOnly] = useState(false);
+  const [editing, setEditing] = useState<Shot | null>(null);
+  const [draft, setDraft] = useState<ShotPatch>({});
   const hasBall = shots.some((s) => s.confirmed);
 
   const filtered = useMemo(() => {
@@ -111,7 +115,7 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
       {filtered.length ? (
         <ul className="shot-list">
           {filtered.slice(0, LIST_LIMIT).map((s, i) => (
-            <li key={`${s.t}-${i}`}>
+            <li key={`${s.t}-${s.playerId}-${i}`} className="shot-row-item">
               <button
                 className="shot-item"
                 disabled={!onPlay}
@@ -127,12 +131,73 @@ export function Highlights({ shots, rallies, players, onPlay }: Props) {
                       ✓ ball
                     </span>
                   )}
+                  {s.edited && <span className="tag">edited</span>}
                 </span>
                 <span className="muted small">{s.zone}</span>
                 <span className="power" title="Swing speed, torso-lengths per second">
                   {s.swingSpeed.toFixed(0)}
                 </span>
               </button>
+              <button
+                className="edit-btn"
+                aria-label={`Correct ${name(s.playerId)} ${SHOT_LABELS[s.type]} at ${fmtTime(s.t)}`}
+                title="Correct this shot"
+                onClick={() => {
+                  setEditing(editing === s ? null : s);
+                  setDraft({ type: s.type, playerId: s.playerId });
+                }}
+              >
+                ✎
+              </button>
+              {editing === s && (
+                <div className="shot-editor">
+                  <select
+                    id="edit-shot-type"
+                    aria-label="Shot type"
+                    value={draft.type}
+                    onChange={(e) => setDraft({ ...draft, type: e.target.value as ShotType })}
+                  >
+                    {SHOT_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {SHOT_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    id="edit-shot-player"
+                    aria-label="Hit by"
+                    value={draft.playerId}
+                    onChange={(e) => setDraft({ ...draft, playerId: Number(e.target.value) })}
+                  >
+                    {players.map((p) => (
+                      <option key={p.playerId} value={p.playerId}>
+                        {name(p.playerId)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="primary small"
+                    onClick={() => {
+                      onEditShot(s, draft);
+                      setEditing(null);
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="ghost small"
+                    onClick={() => {
+                      onEditShot(s, null);
+                      setEditing(null);
+                    }}
+                  >
+                    Not a shot
+                  </button>
+                  <button className="link small" onClick={() => setEditing(null)}>
+                    Cancel
+                  </button>
+                </div>
+              )}
             </li>
           ))}
           {filtered.length > LIST_LIMIT && (

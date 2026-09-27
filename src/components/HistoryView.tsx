@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { analysedSeconds } from "../analysis/reliability";
 import { fmtTime, pct } from "../lib/format";
 import { deleteMatch, listMatches } from "../lib/history";
 import { playerName, type MatchRecord } from "../lib/match";
@@ -15,7 +16,7 @@ interface Metric {
   value: (m: MatchRecord) => number | null;
 }
 
-const minutes = (m: MatchRecord) => Math.max(m.result.duration / 60, 1 / 60);
+const minutes = (m: MatchRecord) => analysedSeconds(m.result) / 60;
 const meStats = (m: MatchRecord) => m.result.players.find((p) => p.playerId === m.me) ?? null;
 const myTeam = (m: MatchRecord) =>
   m.me === null ? null : (m.result.teams ?? []).find((t) => t.team === (m.me! < 2 ? "A" : "B")) ?? null;
@@ -103,7 +104,7 @@ export function HistoryView({ onOpen, onNew }: Props) {
                   <button className="match-item" onClick={() => onOpen(m)}>
                     <span className="match-name">{m.title}</span>
                     <span className="muted small">
-                      {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(m.result.duration)} ·{" "}
+                      {new Date(m.createdAt).toLocaleDateString()} · {fmtTime(analysedSeconds(m.result))} ·{" "}
                       {m.result.shots.length} shots
                       {m.me !== null && ` · you: ${playerName(m, m.me)}`}
                       {m.report && " · coached"}

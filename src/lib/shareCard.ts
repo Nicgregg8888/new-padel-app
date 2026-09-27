@@ -1,4 +1,5 @@
 import { COURT_LENGTH, COURT_WIDTH } from "../analysis/court";
+import { analysedSeconds } from "../analysis/reliability";
 import { PLAYER_COLORS } from "../analysis/tracker";
 import type { ShotType } from "../analysis/types";
 import { SHOT_COLORS, SHOT_LABELS, fmtTime, pct } from "./format";
@@ -61,7 +62,7 @@ export async function renderShareCard(match: MatchRecord): Promise<Blob> {
   // Player headline
   text(playerName(match, focusId), 64, 270, 88, color, 800);
   text(
-    `${fmtTime(result.duration)} of play · ${result.rallies.length} rallies · ${result.shots.length} shots detected`,
+    `${fmtTime(analysedSeconds(result))} of play · ${result.rallies.length} rallies · ${result.shots.length} shots detected`,
     64,
     324,
     30,

@@ -9,7 +9,7 @@ import {
 } from "../../shared/coachPrompt";
 import { blobToDataUrl, captureFrames } from "../analysis/analyzeVideo";
 import { buildCoachSummary, planKeyframes, type KeyframePlan } from "../analysis/coachRequest";
-import type { AnalysisResult } from "../analysis/types";
+import type { AnalysisResult, PointTag } from "../analysis/types";
 import { HOSTED, claudeRuntime, isSampleError } from "./hosted";
 import { loadHiddenVideo } from "./video";
 
@@ -86,6 +86,7 @@ export interface ReportInput {
   src: string | null;
   names: Record<number, string>;
   me: number | null;
+  points?: PointTag[];
   level: string;
   focus: string;
   onStep?: (step: string) => void;
@@ -102,7 +103,7 @@ export async function generateReport(input: ReportInput): Promise<CoachReport> {
   }
   input.onStep?.("Your AI coach is reviewing the match…");
   const req = {
-    summary: buildCoachSummary(input.result, { names: input.names, me: input.me }),
+    summary: buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points }),
     context: { level: input.level, focus: input.focus || undefined },
   };
   return HOSTED ? reportInPage(req, plan, images) : reportFromServer(req, plan, images);
@@ -112,6 +113,7 @@ export interface FollowUpInput {
   result: AnalysisResult;
   names: Record<number, string>;
   me: number | null;
+  points?: PointTag[];
   report: CoachReport | null;
   turns: ChatTurn[];
   onText?: (text: string) => void;
@@ -120,7 +122,7 @@ export interface FollowUpInput {
 
 /** Answer a follow-up question; `turns` ends with the new user question. */
 export async function askFollowUp(input: FollowUpInput): Promise<string> {
-  const summary = buildCoachSummary(input.result, { names: input.names, me: input.me });
+  const summary = buildCoachSummary(input.result, { names: input.names, me: input.me, points: input.points });
   // Keep the conversation inside the prompt budget: drop the oldest turns first.
   const turns = input.turns.slice(-12);
   if (!HOSTED) {
