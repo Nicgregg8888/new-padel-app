@@ -1,11 +1,12 @@
+import type { AudioHits } from "./audio";
 import { BallDetector, BallTracker, annotateShots, ballEvents, cleanTrack, torsoBoxes } from "./ball";
 import { NET_Y, COURT_WIDTH, applyHomography, courtToImageHomography, imageToCourtHomography, isOnCourt } from "./court";
 import { createPoseLandmarkers, type PoseModel } from "./pose";
 import { LM, detectShots, groupRallies, markServes } from "./shots";
-import { computePlayerStats, frameAt } from "./stats";
+import { computePlayerStats, fillGaps, frameAt } from "./stats";
 import { computeTeamTactics, rallyPatterns } from "./tactics";
-import { computeTiles, poseQuality, tileToFrame } from "./tiles";
-import { PlayerTracker, canonicalPlayerOrder, dedupeDetections } from "./tracker";
+import { computeTiles, focusTile, playArea, poseQuality, samePerson, tileToFrame, type Tile } from "./tiles";
+import { PlayerTracker, canonicalPlayerOrder } from "./tracker";
 import { knownDuration, seekTo } from "../lib/video";
 import type { AnalysisResult, BallObs, CourtCorners, FramePose, Pose, SampledFrame } from "./types";
 
@@ -21,6 +22,8 @@ export interface AnalyzeOptions {
   resume?: { frames: SampledFrame[]; ball: BallObs[]; lastT: number };
   /** Called every ~15 s of video (or 20 s of work) with the frames sampled since the last call. */
   onCheckpoint?: (newFrames: SampledFrame[], lastT: number, ball: BallObs[]) => void;
+  /** Ball hits heard in the soundtrack (used when they look like play). */
+  audio?: AudioHits;
   /** Also look for the ball on every presented frame (beta). */
   trackBall?: boolean;
   onProgress?: (fraction: number, frame: SampledFrame) => void;
@@ -40,6 +43,9 @@ const hasFrameCallback = () =>
   typeof HTMLVideoElement !== "undefined" && "requestVideoFrameCallback" in HTMLVideoElement.prototype;
 
 class StallError extends Error {}
+
+/** Mean per-pixel change (0-255) between samples that means the picture cut to another shot (normal play stays under ~3). */
+const SCENE_CUT_DIFF = 12;
 
 /**
  * Fast path: play the video and grab samples as frames are presented,
@@ -137,8 +143,11 @@ export async function analyzeVideo(
 ): Promise<AnalysisResult> {
   const aspect = video.videoWidth / video.videoHeight || 16 / 9;
   const tiles = computeTiles(opts.corners, aspect);
-  // Two players per half of the court, per tile; overlaps are deduplicated below.
-  const landmarkers = await createPoseLandmarkers(opts.model, tiles.length, 2);
+  const area = playArea(opts.corners, aspect);
+  // The ball flies higher than players reach: allow more room above the court.
+  const ballArea = playArea(opts.corners, aspect, 6);
+  // Up to three people per tile (two players plus slack); overlaps are deduplicated below.
+  const landmarkers = await createPoseLandmarkers(opts.model, tiles.length, 3);
   if (opts.signal?.aborted) {
     for (const l of landmarkers) l.close();
     throw new DOMException("Analysis cancelled", "AbortError");
@@ -154,6 +163,66 @@ export async function analyzeVideo(
     return { canvas: c, ctx: c.getContext("2d", { willReadFrequently: false })! };
   });
   const H = imageToCourtHomography(opts.corners);
+  const toImage = courtToImageHomography(opts.corners);
+
+  // One landmarker per player for targeted "focus" crops.
+  const focusLandmarkers = await createPoseLandmarkers(opts.model, 4, 1).catch((e) => {
+    for (const l of landmarkers) l.close();
+    throw e;
+  });
+  if (opts.signal?.aborted) {
+    for (const l of [...landmarkers, ...focusLandmarkers]) l.close();
+    throw new DOMException("Analysis cancelled", "AbortError");
+  }
+  const focusCanvas = (() => {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 256;
+    return { canvas: c, ctx: c.getContext("2d")! };
+  })();
+
+  /** Run pose detection on one crop, with everything outside the playing area blanked. */
+  const detectIn = (
+    landmarker: (typeof landmarkers)[number],
+    { canvas, ctx }: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D },
+    tile: Tile,
+    ts: number,
+  ): (FramePose & { quality: number })[] => {
+    // Blank everything outside the playing area (crowd, screens) so the
+    // detector spends its attention on the players.
+    ctx.fillStyle = "#7f7f7f";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.beginPath();
+    area.forEach((p, k) => {
+      const x = ((p.x - tile.x) / tile.w) * canvas.width;
+      const y = ((p.y - tile.y) / tile.h) * canvas.height;
+      if (k === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(
+      video,
+      tile.x * video.videoWidth,
+      tile.y * video.videoHeight,
+      tile.w * video.videoWidth,
+      tile.h * video.videoHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    ctx.restore();
+    const out: (FramePose & { quality: number })[] = [];
+    for (const lms of landmarker.detectForVideo(canvas, ts).landmarks) {
+      const local: Pose = lms.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility }));
+      const landmarks = tileToFrame(local, tile);
+      const court = applyHomography(H, feet(landmarks));
+      if (isOnCourt(court)) out.push({ playerId: -1, landmarks, court, quality: poseQuality(local) });
+    }
+    return out;
+  };
 
   // Ball tracking works on a small copy of every presented frame.
   const ballCanvas = document.createElement("canvas");
@@ -167,8 +236,7 @@ export async function analyzeVideo(
     ballCtx.drawImage(video, 0, 0, ballCanvas.width, ballCanvas.height);
     const img = ballCtx.getImageData(0, 0, ballCanvas.width, ballCanvas.height);
     const last = frames[frames.length - 1];
-    const cands = ballDetector.detect(img, last ? torsoBoxes(last.poses) : []);
-    ballTracker.push(t, cands);
+    ballTracker.push(t, ballDetector.detect(img, last ? torsoBoxes(last.poses) : [], ballArea));
   };
 
   const duration = await knownDuration(video);
@@ -190,41 +258,59 @@ export async function analyzeVideo(
   const CHECKPOINT_MS = 20_000;
   let lastTs = -1;
 
+  // Cut detection: a sudden change of the whole picture between samples.
+  const cutCanvas = document.createElement("canvas");
+  cutCanvas.width = 64;
+  cutCanvas.height = 36;
+  const cutCtx = cutCanvas.getContext("2d", { willReadFrequently: true })!;
+  let prevThumb: Uint8ClampedArray | null = null;
+  const isCut = () => {
+    cutCtx.drawImage(video, 0, 0, 64, 36);
+    const thumb = cutCtx.getImageData(0, 0, 64, 36).data;
+    const prev = prevThumb;
+    prevThumb = thumb;
+    if (!prev) return false;
+    let diff = 0;
+    for (let i = 0; i < thumb.length; i += 4) diff += Math.abs(thumb[i] - prev[i]) + Math.abs(thumb[i + 1] - prev[i + 1]);
+    return diff / (64 * 36 * 2) > SCENE_CUT_DIFF;
+  };
+
   const processFrame = (t: number) => {
+    if (isCut()) tracker.cut();
     // MediaPipe requires strictly increasing timestamps.
     const ts = Math.max(lastTs + 1, Math.round(t * 1000));
     lastTs = ts;
     const candidates: (FramePose & { quality: number })[] = [];
-    tiles.forEach((tile, i) => {
-      const { canvas, ctx } = canvases[i];
-      ctx.drawImage(
-        video,
-        tile.x * video.videoWidth,
-        tile.y * video.videoHeight,
-        tile.w * video.videoWidth,
-        tile.h * video.videoHeight,
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      );
-      const result = landmarkers[i].detectForVideo(canvas, ts);
-      for (const lms of result.landmarks) {
-        const local: Pose = lms.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility }));
-        const landmarks = tileToFrame(local, tile);
-        const court = applyHomography(H, feet(landmarks));
-        if (isOnCourt(court)) candidates.push({ playerId: -1, landmarks, court, quality: poseQuality(local) });
-      }
-    });
+    tiles.forEach((tile, i) => candidates.push(...detectIn(landmarkers[i], canvases[i], tile, ts)));
     // The same player can show up in two overlapping tiles: keep the better view.
     candidates.sort((a, b) => b.quality - a.quality);
-    const kept: FramePose[] = dedupeDetections(candidates.map((c) => c.court)).map((k) => {
-      const { quality: _q, ...pose } = candidates[k];
-      return pose;
-    });
+    // Best first; drop anything that is the same body as one already kept.
+    const kept: FramePose[] = [];
+    for (const c of candidates) {
+      if (kept.some((k) => samePerson(k.landmarks, c.landmarks))) continue;
+      const { quality: _q, ...pose } = c;
+      kept.push(pose);
+    }
     const ids = tracker.assign(t, kept.map((k) => k.court));
     kept.forEach((k, j) => (k.playerId = ids[j]));
-    const frame = { t, poses: kept.filter((k) => k.playerId >= 0) };
+    const found = kept.filter((k) => k.playerId >= 0);
+
+    // Players we knew about but missed this time: look again, zoomed in on
+    // where they were. Small far-side players are often found this way.
+    for (const { id, pos } of tracker.missing(t)) {
+      if (id >= focusLandmarkers.length) continue;
+      const tile = focusTile(applyHomography(toImage, pos), opts.corners, pos, aspect);
+      const best = detectIn(focusLandmarkers[id], focusCanvas, tile, ts)
+        .filter((c) => Math.hypot(c.court.x - pos.x, c.court.y - pos.y) < 4)
+        // Not someone we already have (the crop can include a nearby partner).
+        .filter((c) => !found.some((f) => samePerson(f.landmarks, c.landmarks)))
+        .sort((a, b) => b.quality - a.quality)[0];
+      if (best && tracker.confirm(id, t, best.court)) {
+        const { quality: _q, ...pose } = best;
+        found.push({ ...pose, playerId: id });
+      }
+    }
+    const frame = { t, poses: found };
     frames.push(frame);
     const fresh = frames.length - checkpointed;
     if (
@@ -268,7 +354,7 @@ export async function analyzeVideo(
       }
     }
   } finally {
-    for (const l of landmarkers) l.close();
+    for (const l of [...landmarkers, ...focusLandmarkers]) l.close();
   }
 
   const mapping = canonicalPlayerOrder(frames);
@@ -278,7 +364,14 @@ export async function analyzeVideo(
       .filter((p) => p.playerId >= 0);
   }
 
-  const detected = detectShots(frames, { aspect, minSwingSpeed: opts.minSwingSpeed });
+  const useAudio = !!opts.audio?.usable;
+  const filled = fillGaps(frames);
+  frames.splice(0, frames.length, ...filled);
+  const detected = detectShots(frames, {
+    aspect,
+    minSwingSpeed: opts.minSwingSpeed,
+    ...(useAudio ? { hits: opts.audio!.times.filter((t) => t >= start && t <= end) } : {}),
+  });
   const { dominantHand } = detected;
   let shots = detected.shots;
 
@@ -288,7 +381,7 @@ export async function analyzeVideo(
     const wristsAt = (t: number) =>
       (frameAt(frames, t)?.poses ?? []).flatMap((p) =>
         [LM.leftWrist, LM.rightWrist]
-          .filter((i) => p.landmarks[i].visibility > 0.3)
+          .filter((i) => p.landmarks[i] && p.landmarks[i].visibility > 0.3)
           .map((i) => ({ playerId: p.playerId, p: p.landmarks[i] })),
       );
     const events = ballEvents(track, wristsAt);
@@ -311,6 +404,7 @@ export async function analyzeVideo(
     teams: computeTeamTactics(frames),
     calibrated: opts.calibrated,
     ball,
+    ...(opts.audio ? { audio: { used: useAudio, pops: opts.audio.times.length } } : {}),
     ...(start > 0.05 || end < duration - 0.05 ? { range: { start, end } } : {}),
   };
 }

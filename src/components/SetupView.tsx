@@ -15,6 +15,8 @@ export interface AnalysisSettings {
   model: PoseModel;
   minSwingSpeed: number;
   trackBall: boolean;
+  /** Use ball-hit sounds from the soundtrack to find shots. */
+  useAudio: boolean;
   range?: { start: number; end: number };
 }
 
@@ -39,6 +41,7 @@ export function SetupView({ src, onStart, onBack }: Props) {
   const [fps, setFps] = useState(10);
   const [sensitivity, setSensitivity] = useState<Sensitivity>("medium");
   const [trackBall, setTrackBall] = useState(true);
+  const [useAudio, setUseAudio] = useState(true);
   const [range, setRange] = useState<{ start: number; end: number } | null>(null);
   const [detect, setDetect] = useState<"pending" | "found" | "missed" | "manual">("pending");
   const stage = useRef<HTMLDivElement>(null);
@@ -91,6 +94,7 @@ export function SetupView({ src, onStart, onBack }: Props) {
       model,
       minSwingSpeed: SENSITIVITY_TO_SPEED[sensitivity],
       trackBall,
+      useAudio,
       ...(range ? { range } : {}),
     });
 
@@ -276,6 +280,11 @@ export function SetupView({ src, onStart, onBack }: Props) {
             <option value="high">High — catch soft touches</option>
           </select>
         </label>
+        <label className="toggle">
+          <input id="use-audio" type="checkbox" checked={useAudio} onChange={(e) => setUseAudio(e.target.checked)} />
+          Use the sound to find shots
+        </label>
+        <p className="muted small">The pop of the ball on the racket pinpoints each shot. Turn off if the video has music over it.</p>
         <label className="toggle">
           <input id="track-ball" type="checkbox" checked={trackBall} onChange={(e) => setTrackBall(e.target.checked)} />
           Track the ball (beta)

@@ -1,5 +1,5 @@
 import { NET_Y, COURT_WIDTH, applyHomography, courtToImageHomography } from "./court";
-import type { CourtCorners, Pose } from "./types";
+import type { CourtCorners, Point, Pose } from "./types";
 
 /** A crop of the frame, normalized [0,1] coordinates. */
 export interface Tile {
@@ -73,4 +73,80 @@ export function poseQuality(tilePose: Pose): number {
   const vis = key.reduce((a, i) => a + tilePose[i].visibility, 0) / key.length;
   const feetInside = [27, 28].every((i) => tilePose[i].y <= 1.02 && tilePose[i].y >= -0.02);
   return feetInside ? vis : vis * 0.5;
+}
+
+/**
+ * The part of the frame where players can be: the court, plus headroom above
+ * each baseline for a standing player (arm raised), plus a little room at the
+ * sides. Everything outside (spectators, screens, the umpire) is blanked
+ * before pose detection so it can't take the detector's attention.
+ *
+ * @param aspect frame width / height
+ */
+export function playArea(corners: CourtCorners, aspect: number, headroom = 1.8): Point[] {
+  const [fl, fr, nr, nl] = corners;
+  // Image units per meter along each baseline (x scaled by aspect so it matches y units).
+  const farScale = (Math.hypot((fr.x - fl.x) * aspect, fr.y - fl.y) / COURT_WIDTH);
+  const nearScale = (Math.hypot((nr.x - nl.x) * aspect, nr.y - nl.y) / COURT_WIDTH);
+  // Meters, as seen from a high camera (vertical heights look shorter than they are).
+  const HEAD = headroom;
+  const SIDE = 0.5; // meters of room outside each sideline
+  const out = (p: Point, dx: number, dy: number) => ({ x: p.x + dx / aspect, y: p.y + dy });
+  return [
+    out(fl, -SIDE * farScale, -HEAD * farScale),
+    out(fr, SIDE * farScale, -HEAD * farScale),
+    out(nr, SIDE * nearScale, 0.3 * nearScale),
+    out(nl, -SIDE * nearScale, 0.3 * nearScale),
+  ];
+}
+
+/**
+ * A tight square crop around where a player's feet are expected, sized to
+ * the player's height at that spot, so a small far-away player fills much
+ * more of the detector's view than in a general tile.
+ */
+export function focusTile(feet: Point, corners: CourtCorners, courtPos: Point, aspect: number): Tile {
+  const toImage = courtToImageHomography(corners);
+  const a = applyHomography(toImage, courtPos);
+  const b = applyHomography(toImage, { x: courtPos.x + 1, y: courtPos.y });
+  const perMeter = Math.hypot((b.x - a.x) * aspect, b.y - a.y); // height-normalized units per meter
+  const height = 1.85 * perMeter * 0.85; // a player, as seen from a high camera
+  const side = Math.min(1, Math.max(0.08, height * 2.4)); // in height units
+  const w = Math.min(1, side / aspect);
+  const h = side;
+  const cx = feet.x;
+  const cy = feet.y - height * 0.45;
+  const x = Math.min(1 - w, Math.max(0, cx - w / 2));
+  const y = Math.min(1 - h, Math.max(0, cy - h / 2));
+  return { x, y, w, h };
+}
+
+/** Image-space box around a pose's visible landmarks. */
+export function poseBox(pose: Pose): { x0: number; y0: number; x1: number; y1: number } {
+  const pts = pose.filter((l) => l.visibility > 0.3);
+  const use = pts.length >= 4 ? pts : pose;
+  const xs = use.map((l) => l.x);
+  const ys = use.map((l) => l.y);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+/**
+ * Two detections of the same body: their boxes overlap a lot, or their hips
+ * are very close relative to body size. Works for far players, whose court
+ * positions are too noisy to compare in meters.
+ */
+export function samePerson(a: Pose, b: Pose): boolean {
+  const A = poseBox(a);
+  const B = poseBox(b);
+  const ix = Math.max(0, Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0));
+  const iy = Math.max(0, Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0));
+  const inter = ix * iy;
+  const area = (r: typeof A) => Math.max(1e-9, (r.x1 - r.x0) * (r.y1 - r.y0));
+  // Overlap relative to the smaller box, so a partial (cut-off) view of the same person counts.
+  if (inter / Math.min(area(A), area(B)) > 0.45) return true;
+  const hip = (p: Pose) => ({ x: (p[23].x + p[24].x) / 2, y: (p[23].y + p[24].y) / 2 });
+  const ha = hip(a);
+  const hb = hip(b);
+  const size = Math.max(A.y1 - A.y0, B.y1 - B.y0);
+  return Math.hypot(ha.x - hb.x, ha.y - hb.y) < 0.25 * size;
 }

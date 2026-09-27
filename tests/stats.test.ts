@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCoachSummary, pickKeyShots, planKeyframes } from "../src/analysis/coachRequest";
-import { computePlayerStats, frameAt } from "../src/analysis/stats";
+import { computePlayerStats, fillGaps, frameAt } from "../src/analysis/stats";
 import type { AnalysisResult, SampledFrame, Shot } from "../src/analysis/types";
 import { CoachRequestSchema } from "../shared/coach";
 import { normalizeReport } from "../shared/coachPrompt";
@@ -113,5 +113,27 @@ describe("frameAt", () => {
   it("reports tracked time from the samples", () => {
     const [p] = computePlayerStats(frames, [], new Map());
     expect(p.trackedSeconds).toBeCloseTo(5, 5);
+  });
+});
+
+describe("fillGaps", () => {
+  const f = (t: number, x?: number): SampledFrame => ({
+    t,
+    poses: x === undefined ? [] : [{ playerId: 0, landmarks: [], court: { x, y: 15 } }],
+  });
+
+  it("interpolates short gaps and leaves long ones", () => {
+    const frames = [f(0, 2), f(0.1), f(0.2), f(0.3, 5), f(0.4), ...Array.from({ length: 15 }, (_, i) => f(0.5 + i * 0.1)), f(2.0, 6)];
+    const out = fillGaps(frames, 1.0);
+    expect(out[1].poses[0]).toMatchObject({ interpolated: true, court: { x: 3, y: 15 } });
+    expect(out[2].poses[0].court.x).toBeCloseTo(4);
+    expect(out[5].poses).toHaveLength(0); // 0.3 → 2.0 is too long to guess
+  });
+
+  it("counts filled positions as tracked but not as detected", () => {
+    const frames = fillGaps([f(0, 2), f(0.1), f(0.2, 4), f(0.3, 4)], 1.0);
+    const [p] = computePlayerStats(frames, [], new Map());
+    expect(p.trackedSeconds).toBeCloseTo(0.3, 5);
+    expect(p.detectedSeconds).toBeCloseTo(0.2, 5);
   });
 });

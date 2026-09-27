@@ -13,7 +13,9 @@ interface Candidate extends Point {
   area: number;
 }
 
-const MOTION_THRESHOLD = 18;
+const MOTION_THRESHOLD = 14;
+/** How much brighter than its surroundings a ball pixel must be. */
+const LOCAL_CONTRAST = 18;
 const MIN_AREA = 1;
 const MAX_AREA_FRACTION = 0.0012; // of the processed frame; a ball is tiny
 
@@ -35,7 +37,12 @@ export function isBallColor(r: number, g: number, b: number): boolean {
 export class BallDetector {
   private prev: Uint8Array | null = null;
 
-  detect(img: Pixels, exclude: Box[] = []): Candidate[] {
+  /**
+   * @param exclude boxes to ignore (players' bodies)
+   * @param inside optional polygon (normalized) the ball must be in, e.g. the
+   *   air above the court, to ignore the crowd and screens
+   */
+  detect(img: Pixels, exclude: Box[] = [], inside?: Point[]): Candidate[] {
     const { width: W, height: H, data } = img;
     const gray = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) {
@@ -45,11 +52,42 @@ export class BallDetector {
     this.prev = gray;
     if (!prev || prev.length !== gray.length) return [];
 
+    // Local background brightness (box blur via an integral image).
+    const R = 5;
+    const integral = new Uint32Array((W + 1) * (H + 1));
+    for (let y = 0; y < H; y++) {
+      let row = 0;
+      for (let x = 0; x < W; x++) {
+        row += gray[y * W + x];
+        integral[(y + 1) * (W + 1) + x + 1] = integral[y * (W + 1) + x + 1] + row;
+      }
+    }
+    const localMean = (x: number, y: number) => {
+      const x0 = Math.max(0, x - R);
+      const y0 = Math.max(0, y - R);
+      const x1 = Math.min(W, x + R + 1);
+      const y1 = Math.min(H, y + R + 1);
+      const sum =
+        integral[y1 * (W + 1) + x1] - integral[y0 * (W + 1) + x1] - integral[y1 * (W + 1) + x0] + integral[y0 * (W + 1) + x0];
+      return sum / ((x1 - x0) * (y1 - y0));
+    };
+
+    // In real footage a fast ball is a motion-blurred smudge that often loses
+    // its yellow, so accept either ball colour or "a moving spot clearly
+    // brighter than the surface around it".
     const mask = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) {
-      if (Math.abs(gray[i] - prev[i]) > MOTION_THRESHOLD && isBallColor(data[i * 4], data[i * 4 + 1], data[i * 4 + 2])) {
+      if (Math.abs(gray[i] - prev[i]) <= MOTION_THRESHOLD) continue;
+      const r = data[i * 4];
+      const g = data[i * 4 + 1];
+      const b = data[i * 4 + 2];
+      if (isBallColor(r, g, b)) {
         mask[i] = 1;
+        continue;
       }
+      const x = i % W;
+      const y = (i - x) / W;
+      if (gray[i] - localMean(x, y) > LOCAL_CONTRAST) mask[i] = 1;
     }
 
     const maxArea = Math.max(6, MAX_AREA_FRACTION * W * H);
@@ -86,24 +124,29 @@ export class BallDetector {
       if (area < MIN_AREA || area > maxArea) continue;
       const p = { x: (sx / area + 0.5) / W, y: (sy / area + 0.5) / H };
       if (exclude.some((b) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1)) continue;
+      if (inside && !pointInPolygon(p, inside)) continue;
       out.push({ ...p, area });
     }
     return out;
   }
 }
 
-/** Torso boxes (shoulders to hips): where shirts, not balls, live. */
+/**
+ * Player boxes: where shirts, limbs and rackets (not balls) move. Whole
+ * bodies, since white kit and bare arms look just like a blurred ball.
+ */
 export function torsoBoxes(poses: FramePose[]): Box[] {
   return poses.map(({ landmarks: l }) => {
-    const xs = [l[11].x, l[12].x, l[23].x, l[24].x];
-    const ys = [l[11].y, l[12].y, l[23].y, l[24].y];
-    // Generous sideways: shirt panels and stripes sit beside the shoulder-hip line.
+    const pts = l.filter((p) => p.visibility > 0.2);
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    if (!xs.length) return { x0: 0, x1: 0, y0: 0, y1: 0 };
     const h = Math.max(...ys) - Math.min(...ys);
     return {
-      x0: Math.min(...xs) - h * 0.35,
-      x1: Math.max(...xs) + h * 0.35,
-      y0: Math.min(...ys) - h * 0.15,
-      y1: Math.max(...ys) + h * 0.2,
+      x0: Math.min(...xs) - h * 0.12,
+      x1: Math.max(...xs) + h * 0.12,
+      y0: Math.min(...ys) - h * 0.1,
+      y1: Math.max(...ys) + h * 0.05,
     };
   });
 }
@@ -263,4 +306,14 @@ export function annotateShots(
     const lob = flight.length >= 3 && apex < lobLine && s.type !== "overhead";
     return { ...s, confirmed: true, ...(lob ? { lob: true } : {}) };
   });
+}
+
+export function pointInPolygon(p: Point, poly: Point[]): boolean {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i];
+    const b = poly[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) c = !c;
+  }
+  return c;
 }

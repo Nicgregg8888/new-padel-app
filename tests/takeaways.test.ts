@@ -22,7 +22,10 @@ describe("takeaways", () => {
   });
 
   it("warns about poor tracking on real matches", () => {
-    const poor = { ...result, players: result.players.map((p) => ({ ...p, trackedSeconds: p.trackedSeconds * 0.2 })) };
+    const poor = {
+      ...result,
+      players: result.players.map((p) => ({ ...p, trackedSeconds: p.trackedSeconds * 0.2, detectedSeconds: (p.detectedSeconds ?? 0) * 0.2 })),
+    };
     const t = takeaways({ result: poor, me: 0, name, goals: [] });
     expect(t[0].section).toBe("reliability");
   });

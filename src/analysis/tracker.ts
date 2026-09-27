@@ -7,6 +7,14 @@ const MAX_PLAYER_SPEED = 8;
 const MATCH_SLACK_M = 1.5;
 /** A slot unseen for this long may be taken over by a new detection. */
 const STALE_AFTER_S = 2;
+/** However long a player was unseen, don't match them to someone further away than this. */
+const MAX_GATE_M = 4;
+
+const side = (p: Point) => (p.y > NET_Y ? 1 : -1);
+/** Players never cross the net. */
+const sameSide = (a: Point, b: Point) => side(a) === side(b);
+/** After a cut in edited footage, anyone on the same side may match. */
+const CUT_GATE_M = 20;
 
 interface Slot {
   pos: Point;
@@ -20,6 +28,15 @@ interface Slot {
  */
 export class PlayerTracker {
   private slots: Slot[] = [];
+  private afterCut = false;
+
+  /**
+   * The video cut to another moment (edited highlights, a new rally): players
+   * jump, so the next frame is matched by side and nearest position only.
+   */
+  cut() {
+    this.afterCut = true;
+  }
 
   /** Start from known positions (resuming a saved analysis): slot ids are kept. */
   seed(t: number, players: { id: number; pos: Point }[]) {
@@ -30,14 +47,35 @@ export class PlayerTracker {
     }
   }
 
+  /** Players seen recently but not at time `t`: candidates for a closer look. */
+  missing(t: number, within = 5): { id: number; pos: Point }[] {
+    return this.slots
+      .map((slot, id) => ({ id, slot }))
+      .filter(({ slot }) => Number.isFinite(slot.lastT) && slot.lastT < t && t - slot.lastT <= within)
+      .map(({ id, slot }) => ({ id, pos: slot.pos }));
+  }
+
+  /** Record a sighting found by a targeted search for player `id`. */
+  confirm(id: number, t: number, pos: Point): boolean {
+    const slot = this.slots[id];
+    if (!slot || !Number.isFinite(slot.lastT)) return false;
+    const gate = Math.min(MAX_GATE_M, MAX_PLAYER_SPEED * Math.max(t - slot.lastT, 0) + MATCH_SLACK_M);
+    if (!sameSide(slot.pos, pos) || Math.hypot(pos.x - slot.pos.x, pos.y - slot.pos.y) > gate) return false;
+    this.slots[id] = { pos, lastT: t };
+    return true;
+  }
+
   /** Returns the slot index for each detection, or -1 if it was rejected. */
   assign(t: number, detections: Point[]): number[] {
     const result = new Array<number>(detections.length).fill(-1);
     const pairs: { s: number; d: number; dist: number }[] = [];
     this.slots.forEach((slot, s) => {
       if (!Number.isFinite(slot.lastT)) return; // placeholder from seed(): only re-acquired below
-      const gate = MAX_PLAYER_SPEED * Math.max(t - slot.lastT, 0) + MATCH_SLACK_M;
+      const gate = this.afterCut
+        ? CUT_GATE_M
+        : Math.min(MAX_GATE_M, MAX_PLAYER_SPEED * Math.max(t - slot.lastT, 0) + MATCH_SLACK_M);
       detections.forEach((det, d) => {
+        if (!sameSide(slot.pos, det)) return;
         const dist = Math.hypot(det.x - slot.pos.x, det.y - slot.pos.y);
         if (dist <= gate) pairs.push({ s, d, dist });
       });
@@ -53,7 +91,9 @@ export class PlayerTracker {
 
     detections.forEach((det, d) => {
       if (result[d] !== -1) return;
-      if (this.slots.length < MAX_PLAYERS) {
+      // Two players per side: a third track on one side is a spectator or a ghost.
+      const onSide = this.slots.filter((sl) => Number.isFinite(sl.lastT) && side(sl.pos) === side(det)).length;
+      if (this.slots.length < MAX_PLAYERS && onSide < 2) {
         this.slots.push({ pos: det, lastT: t });
         usedSlots.add(this.slots.length - 1);
         result[d] = this.slots.length - 1;
@@ -80,6 +120,7 @@ export class PlayerTracker {
     result.forEach((s, d) => {
       if (s !== -1) this.slots[s] = { pos: detections[d], lastT: t };
     });
+    if (detections.length) this.afterCut = false;
     return result;
   }
 }

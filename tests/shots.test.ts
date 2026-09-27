@@ -87,3 +87,32 @@ describe("markServes", () => {
     expect(out.map((s) => s.type)).toEqual(["serve", "forehand", "forehand", "forehand"]);
   });
 });
+
+describe("detectShots with heard hits", () => {
+  // Two players swing at t≈1 (near, id 0) and t≈2 (far, id 2); a third pop at t≈3 has nobody swinging.
+  const frames: SampledFrame[] = [];
+  for (let i = 0; i < 40; i++) {
+    const t = i / FPS;
+    const w0 = i === 10 ? { x: 0.06, y: -0.02 } : i === 9 ? { x: -0.06, y: -0.02 } : { x: 0.025, y: -0.01 };
+    const w2 = i === 20 ? { x: 0.06, y: -0.02 } : i === 19 ? { x: -0.06, y: -0.02 } : { x: 0.025, y: -0.01 };
+    frames.push({
+      t,
+      poses: [
+        framePose(0, { x: 0.3, y: 0.7 }, { x: 3, y: 18 }, { rightWrist: w0 }),
+        framePose(2, { x: 0.5, y: 0.3 }, { x: 3, y: 2 }, { rightWrist: w2 }),
+      ],
+    });
+  }
+
+  it("uses the sound for timing and the body for who hit it; silent pops are skipped", () => {
+    const { shots } = detectShots(frames, { aspect: 1, hits: [1.02, 1.98, 3.1] });
+    expect(shots.map((s) => [s.t, s.playerId, s.heard])).toEqual([
+      [1.02, 0, true],
+      [1.98, 2, true],
+    ]);
+  });
+
+  it("drops swings that made no sound", () => {
+    expect(detectShots(frames, { aspect: 1, hits: [1.02] }).shots).toHaveLength(1);
+  });
+});

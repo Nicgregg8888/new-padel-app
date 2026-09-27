@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { analysedSeconds } from "../analysis/reliability";
 import { fmtTime } from "../lib/format";
+import { canDecodeVideo } from "../lib/video";
 import { FilmingGuide } from "./FilmingGuide";
 import type { MatchRecord } from "../lib/match";
 
@@ -17,10 +18,23 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
   const [drag, setDrag] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const accept = (file: File | undefined) => {
+  const [checking, setChecking] = useState(false);
+  const accept = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith("video/")) {
+    if (!file.type.startsWith("video/") && !/\.(mov|mp4|m4v|webm|mkv|avi)$/i.test(file.name)) {
       setError("That doesn't look like a video file.");
+      return;
+    }
+    setError(null);
+    setChecking(true);
+    const url = URL.createObjectURL(file);
+    const ok = await canDecodeVideo(url);
+    URL.revokeObjectURL(url);
+    setChecking(false);
+    if (!ok) {
+      setError(
+        "This browser can't show the picture in this video. iPhone videos are often HEVC (H.265), which Chrome and Firefox can't always play. Open this page in Safari, or re-save the video as H.264: on iPhone set Settings → Camera → Formats → Most Compatible, or export it from Photos/iMovie as MP4.",
+      );
       return;
     }
     onFile(file);
@@ -90,7 +104,7 @@ export function Uploader({ onFile, recent, onOpenRecent, onShowHistory, onDemo }
         onKeyDown={(e) => e.key === "Enter" && input.current?.click()}
       >
         <div className="drop-icon" aria-hidden>▶</div>
-        <p className="drop-title">Drop a match video here</p>
+        <p className="drop-title">{checking ? "Checking the video…" : "Drop a match video here"}</p>
         <p className="muted">or click to browse · MP4, MOV, WebM</p>
         <p className="muted small">
           Best results: fixed camera behind a baseline, whole court in view. Your video never

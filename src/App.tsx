@@ -56,6 +56,8 @@ export default function App() {
 
   const onAnalysed = useCallback(
     (result: AnalysisResult) => {
+      // Development only: expose the raw result for debugging tools.
+      if (import.meta.env.DEV) (window as unknown as { __padelResult?: AnalysisResult }).__padelResult = result;
       const match = newMatch(video?.name ?? "Match", result, loadPlayerPrefs());
       saveMatch(match);
       setStage({ kind: "results", match, withVideo: true });

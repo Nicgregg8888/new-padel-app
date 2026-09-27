@@ -114,6 +114,7 @@ export function buildCoachSummary(
       ...(s.confirmed ? { confirmed: true } : {}),
       ...(s.lob ? { lob: true } : {}),
       ...(s.edited ? { edited: true } : {}),
+      ...(s.heard ? { heard: true } : {}),
     })),
   };
 }

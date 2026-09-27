@@ -38,12 +38,16 @@ export function computePlayerStats(
   dominantHand: Map<number, "left" | "right">,
 ): PlayerStats[] {
   const byPlayer = new Map<number, { t: number; p: Point }[]>();
-  for (const f of frames) {
+  const detected = new Map<number, number>();
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    const dt = Math.min(1, Math.max(0, (frames[i + 1]?.t ?? f.t) - f.t));
     for (const pose of f.poses) {
       if (pose.playerId < 0) continue;
       const list = byPlayer.get(pose.playerId) ?? [];
       list.push({ t: f.t, p: pose.court });
       byPlayer.set(pose.playerId, list);
+      if (!pose.interpolated) detected.set(pose.playerId, (detected.get(pose.playerId) ?? 0) + dt);
     }
   }
 
@@ -90,6 +94,7 @@ export function computePlayerStats(
       avgSpeed: movingTime > 0 ? distance / movingTime : 0,
       maxSpeed,
       trackedSeconds,
+      detectedSeconds: detected.get(playerId) ?? 0,
       zoneShare: {
         net: zoneCounts.net / track.length,
         transition: zoneCounts.transition / track.length,
@@ -135,4 +140,36 @@ export function recountShots(players: PlayerStats[], shots: Shot[]): PlayerStats
       avgSwingSpeed: mine.length ? mine.reduce((a, s) => a + s.swingSpeed, 0) / mine.length : 0,
     };
   });
+}
+
+/**
+ * Fill short gaps in each player's track by interpolating their position:
+ * players move smoothly, and a brief miss shouldn't break pair statistics.
+ * Filled positions carry no body landmarks and are flagged.
+ */
+export function fillGaps(frames: SampledFrame[], maxGap = 1.0): SampledFrame[] {
+  const out = frames.map((f) => ({ ...f, poses: [...f.poses] }));
+  const ids = new Set(frames.flatMap((f) => f.poses.map((p) => p.playerId)));
+  for (const id of ids) {
+    let last = -1;
+    for (let i = 0; i < frames.length; i++) {
+      const p = frames[i].poses.find((q) => q.playerId === id && !q.interpolated);
+      if (!p) continue;
+      if (last >= 0 && i - last > 1 && frames[i].t - frames[last].t <= maxGap) {
+        const a = frames[last].poses.find((q) => q.playerId === id)!.court;
+        const b = p.court;
+        for (let k = last + 1; k < i; k++) {
+          const u = (frames[k].t - frames[last].t) / (frames[i].t - frames[last].t);
+          out[k].poses.push({
+            playerId: id,
+            landmarks: [],
+            court: { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u },
+            interpolated: true,
+          });
+        }
+      }
+      last = i;
+    }
+  }
+  return out;
 }

@@ -21,10 +21,12 @@ export function analysedSeconds(r: Pick<AnalysisResult, "duration" | "range">): 
 /** How much to trust this analysis, and what would make the next one better. */
 export function assessReliability(r: AnalysisResult): Reliability {
   const secs = analysedSeconds(r);
-  const coverage = [0, 1, 2, 3].map((id) => ({
-    playerId: id,
-    share: Math.min(1, (r.players.find((p) => p.playerId === id)?.trackedSeconds ?? 0) / secs),
-  }));
+  // Count only real detections, not positions filled in between them.
+  const seen = (id: number) => {
+    const p = r.players.find((x) => x.playerId === id);
+    return p?.detectedSeconds ?? p?.trackedSeconds ?? 0;
+  };
+  const coverage = [0, 1, 2, 3].map((id) => ({ playerId: id, share: Math.min(1, seen(id) / secs) }));
 
   let ballCoverage: number | null = null;
   if (r.ball && r.ball.track.length) {

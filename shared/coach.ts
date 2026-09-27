@@ -80,6 +80,7 @@ export const CoachRequestSchema = z.object({
           confirmed: z.boolean().optional(),
           lob: z.boolean().optional(),
           edited: z.boolean().optional(),
+          heard: z.boolean().optional(),
         }),
       )
       .max(2000),

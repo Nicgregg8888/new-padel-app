@@ -18,6 +18,8 @@ export interface FramePose {
   landmarks: Pose;
   /** Feet position projected onto the court, meters. */
   court: Point;
+  /** Position filled in between two real sightings (no body landmarks). */
+  interpolated?: boolean;
 }
 
 export interface SampledFrame {
@@ -48,6 +50,8 @@ export interface Shot {
   lob?: boolean;
   /** The user corrected this shot by hand. */
   edited?: boolean;
+  /** The ball hit was heard in the soundtrack. */
+  heard?: boolean;
 }
 
 /** Ball position in one video frame, normalized image coordinates. */
@@ -69,8 +73,10 @@ export interface PlayerStats {
   distanceMeters: number;
   avgSpeed: number;
   maxSpeed: number;
-  /** Seconds in which this player was tracked. */
+  /** Seconds in which this player's position is known (including short filled gaps). */
   trackedSeconds: number;
+  /** Seconds in which this player was actually detected. */
+  detectedSeconds?: number;
   zoneShare: Record<CourtZone, number>;
   shots: Record<ShotType, number>;
   totalShots: number;
@@ -135,6 +141,8 @@ export interface AnalysisResult {
   players: PlayerStats[];
   teams: TeamTactics[];
   calibrated: boolean;
+  /** Whether ball-hit sounds from the soundtrack were used to find shots. */
+  audio?: { used: boolean; pops: number };
   /** Present when ball tracking ran. */
   ball?: { track: BallObs[]; events: BallEvent[] };
 }

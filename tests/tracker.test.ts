@@ -124,3 +124,41 @@ describe("PlayerTracker.seed", () => {
     expect(ids).toEqual([3, 0, 1, 2]);
   });
 });
+
+describe("PlayerTracker on real-match failure modes", () => {
+  it("never hands a lost near player's id to a far player", () => {
+    const tr = new PlayerTracker();
+    tr.assign(0, [{ x: 2, y: 16 }, { x: 8, y: 16 }, { x: 3, y: 4 }, { x: 7, y: 4 }]);
+    // Near-left player (id 0) unseen for 1.5 s; meanwhile the far players move.
+    for (let i = 1; i <= 15; i++) tr.assign(i / 10, [{ x: 8, y: 16 }, { x: 3, y: 4 + i * 0.05 }, { x: 7, y: 4 }]);
+    const ids = tr.assign(1.6, [{ x: 3, y: 7 }, { x: 8, y: 16 }, { x: 7, y: 4 }, { x: 2.5, y: 15.5 }]);
+    expect(ids[0]).toBe(2); // far-left stays far-left
+    expect(ids[3]).toBe(0); // near-left gets its own id back
+  });
+
+  it("doesn't start a third track on one side", () => {
+    const tr = new PlayerTracker();
+    const ids = tr.assign(0, [{ x: 2, y: 16 }, { x: 8, y: 16 }, { x: 5, y: 19 }, { x: 3, y: 4 }]);
+    expect(ids[2]).toBe(-1);
+    expect(ids[3]).not.toBe(-1);
+  });
+});
+
+describe("PlayerTracker across the net and cuts", () => {
+  it("never gives a near player a far player's id, even both at the net", () => {
+    const tr = new PlayerTracker();
+    tr.assign(0, [{ x: 2, y: 16 }, { x: 8, y: 16 }, { x: 2, y: 9.2 }, { x: 8, y: 4 }]);
+    for (let i = 1; i <= 30; i++) tr.assign(i / 10, [{ x: 8, y: 16 }, { x: 8, y: 4 }]);
+    const ids = tr.assign(3.1, [{ x: 2, y: 10.6 }, { x: 8, y: 16 }, { x: 8, y: 4 }]);
+    expect(ids[0]).toBe(0);
+  });
+
+  it("re-matches by side and position after a cut", () => {
+    const tr = new PlayerTracker();
+    tr.assign(0, [{ x: 2, y: 18 }, { x: 8, y: 18 }, { x: 2, y: 2 }, { x: 8, y: 2 }]);
+    tr.cut();
+    // New rally: everyone moved far more than a player could in 0.1 s.
+    const ids = tr.assign(0.1, [{ x: 3, y: 12 }, { x: 7, y: 12.5 }, { x: 3, y: 8 }, { x: 7, y: 7 }]);
+    expect(ids).toEqual([0, 1, 2, 3]);
+  });
+});

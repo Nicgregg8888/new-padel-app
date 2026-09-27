@@ -16,7 +16,9 @@ describe("assessReliability", () => {
     const poor = {
       ...r,
       calibrated: false,
-      players: r.players.map((p) => (p.playerId >= 2 ? { ...p, trackedSeconds: p.trackedSeconds * 0.2 } : p)),
+      players: r.players.map((p) =>
+        p.playerId >= 2 ? { ...p, trackedSeconds: p.trackedSeconds * 0.2, detectedSeconds: (p.detectedSeconds ?? 0) * 0.2 } : p,
+      ),
     };
     const rel = assessReliability(poor);
     expect(rel.grade).not.toBe("good");

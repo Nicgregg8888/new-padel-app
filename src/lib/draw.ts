@@ -19,6 +19,7 @@ export function drawPoses(
 ) {
   const unit = Math.max(2, h / 300);
   for (const pose of poses) {
+    if (pose.landmarks.length < 33) continue; // filled-in position: nothing to draw
     const color = PLAYER_COLORS[pose.playerId] ?? "#e5e7eb";
     const lm = pose.landmarks;
     ctx.strokeStyle = color;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { analyzeVideo } from "../analysis/analyzeVideo";
+import { audioHitsFromFile } from "../analysis/audio";
 import type { AnalysisResult } from "../analysis/types";
 import { drawPoses } from "../lib/draw";
 import { fmtTime } from "../lib/format";
@@ -46,6 +47,9 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
         c.height = Math.round((c.width * video.videoHeight) / video.videoWidth);
         const ctx = c.getContext("2d")!;
 
+        // Listen for ball hits in the soundtrack while the video loads.
+        const audio = settings.useAudio === false ? undefined : await audioHitsFromFile(src, settings.range);
+        if (ctrl.signal.aborted) return;
         const key = fingerprint ? checkpointKey(fingerprint, settings) : null;
         const saved = key ? await loadCheckpoint(key) : null;
         if (ctrl.signal.aborted) return;
@@ -58,6 +62,7 @@ export function AnalyzingView({ src, fingerprint, settings, onDone, onCancel }: 
         const result = await analyzeVideo(video, {
           ...settings,
           resume: saved ?? undefined,
+          audio,
           onCheckpoint: key
             ? (newFrames, lastT, ball) => {
                 const index = chunk++;

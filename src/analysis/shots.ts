@@ -25,6 +25,12 @@ export interface ShotDetectionOptions {
   minSwingSpeed?: number;
   /** Minimum gap between two shots by the same player, seconds. */
   cooldown?: number;
+  /**
+   * Ball-hit times heard in the soundtrack. When given, each one becomes a
+   * shot credited to whoever was swinging then, and swings without a sound
+   * are dropped.
+   */
+  hits?: number[];
 }
 
 const MIN_VISIBILITY = 0.4;
@@ -52,6 +58,7 @@ interface BodyFrame {
 
 function bodyFrame(t: number, p: FramePose, aspect: number): BodyFrame | null {
   const lm = p.landmarks;
+  if (lm.length < 33) return null; // a filled-in position, no body to read
   const ls = px(lm, LM.leftShoulder, aspect);
   const rs = px(lm, LM.rightShoulder, aspect);
   const lh = px(lm, LM.leftHip, aspect);
@@ -179,11 +186,15 @@ export function detectShots(frames: SampledFrame[], opts: ShotDetectionOptions):
 
   const shots: Shot[] = [];
   const dominantHand = new Map<number, "left" | "right">();
+  const speeds = new Map<number, SpeedSample[]>();
   for (const [playerId, track] of tracks) {
-    const peaks = findPeaks(wristSpeeds(track), threshold, cooldown);
+    const samples = wristSpeeds(track);
+    speeds.set(playerId, samples);
+    const peaks = findPeaks(samples, threshold, cooldown);
     const rightPeaks = peaks.filter((p) => p.wrist === 1).length;
     const hand = rightPeaks >= peaks.length - rightPeaks ? "right" : "left";
     dominantHand.set(playerId, hand);
+    if (opts.hits) continue; // the soundtrack decides when shots happened
     for (const peak of peaks) {
       const base = classifySwing(peak.frame, hand);
       shots.push({
@@ -196,8 +207,69 @@ export function detectShots(frames: SampledFrame[], opts: ShotDetectionOptions):
       });
     }
   }
+  if (opts.hits) shots.push(...shotsFromHits(opts.hits, speeds, dominantHand, threshold));
   shots.sort((a, b) => a.t - b.t);
   return { shots, dominantHand };
+}
+
+const HIT_WINDOW_S = 0.35;
+/** A return can't come faster than this; a pop sooner after a shot is the glass, the floor or an echo. */
+const MIN_RETURN_S = 0.45;
+const teamOfId = (id: number) => (id < 2 ? "A" : "B");
+
+/**
+ * Turn heard ball hits into shots: the hitter is the player whose wrist moved
+ * fastest around that moment. Shots alternate across the net, so right after
+ * a hit by one pair, prefer the other pair if anyone there was swinging.
+ */
+function shotsFromHits(
+  hits: number[],
+  speeds: Map<number, SpeedSample[]>,
+  hands: Map<number, "left" | "right">,
+  threshold: number,
+): Shot[] {
+  const out: Shot[] = [];
+  const minSpeed = threshold * 0.35;
+  let lastTeam: "A" | "B" | null = null;
+  let lastT = -Infinity;
+  for (const h of [...hits].sort((a, b) => a - b)) {
+    if (h - lastT < MIN_RETURN_S) continue;
+    // Everyone's fastest wrist movement around the sound.
+    const near: { playerId: number; s: SpeedSample }[] = [];
+    for (const [playerId, samples] of speeds) {
+      const best = samples
+        .filter((s) => Math.abs(s.frame.t - h) <= HIT_WINDOW_S)
+        .reduce<SpeedSample | null>((a, b) => (!a || b.speed > a.speed ? b : a), null);
+      if (best) near.push({ playerId, s: best });
+    }
+    near.sort((a, b) => b.s.speed - a.s.speed);
+    const swinging = near.filter((n) => n.s.speed >= minSpeed);
+    const inRally = h - lastT < 3;
+    let pick: { playerId: number; s: SpeedSample } | undefined;
+    if (inRally && lastTeam) {
+      // The same pair never hits twice in a row: it's the other side's shot,
+      // even if their swing was hard to see. Still need some movement, or
+      // the pop was a bounce or the glass.
+      pick = near.find((n) => teamOfId(n.playerId) !== lastTeam && n.s.speed >= minSpeed * 0.5);
+    } else {
+      pick = swinging[0];
+    }
+    if (!pick) continue; // a bounce or the glass, or a hitter we can't see
+    const hand = hands.get(pick.playerId) ?? "right";
+    const base = classifySwing(pick.s.frame, hand);
+    out.push({
+      t: h,
+      playerId: pick.playerId,
+      type: toShotType(base, pick.s.frame.court),
+      swingSpeed: pick.s.speed,
+      court: pick.s.frame.court,
+      zone: zoneOf(pick.s.frame.court),
+      heard: true,
+    });
+    lastTeam = teamOfId(pick.playerId);
+    lastT = h;
+  }
+  return out;
 }
 
 /** Group shots into rallies: a pause longer than `maxGap` seconds ends a rally. */

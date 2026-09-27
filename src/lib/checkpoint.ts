@@ -14,6 +14,7 @@ export interface CheckpointSettings {
   model: string;
   minSwingSpeed: number;
   trackBall?: boolean;
+  useAudio?: boolean;
   range?: { start: number; end: number };
 }
 
@@ -55,6 +56,7 @@ export function checkpointKey(fp: VideoFingerprint, s: CheckpointSettings): stri
     s.model,
     s.minSwingSpeed,
     !!s.trackBall,
+    s.useAudio !== false,
     s.range ? [r3(s.range.start), r3(s.range.end)] : null,
   ]);
 }

@@ -72,3 +72,25 @@ export function seekTo(video: HTMLVideoElement, t: number): Promise<void> {
     video.currentTime = t;
   });
 }
+
+/**
+ * Can this browser show the video's picture? Some browsers accept an HEVC
+ * (H.265) file from an iPhone but decode only its audio, leaving width 0.
+ */
+export function canDecodeVideo(src: string, timeoutMs = 10000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.preload = "auto";
+    const done = (ok: boolean) => {
+      clearTimeout(timer);
+      v.removeAttribute("src");
+      v.load();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => done(v.videoWidth > 0), timeoutMs);
+    v.onloadeddata = () => done(v.videoWidth > 0);
+    v.onerror = () => done(false);
+    v.src = src;
+  });
+}
